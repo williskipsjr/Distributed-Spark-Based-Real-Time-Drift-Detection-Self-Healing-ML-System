@@ -1,0 +1,65 @@
+app:
+  name: distributed-adaptive-load-forecasting
+  env: base
+  timezone: UTC
+
+kafka:
+  bootstrap_servers: "localhost:9092"
+  consumer_group: "load-forecasting-spark"
+  topics:
+    raw_load: "pjm.load.raw"
+    predictions: "pjm.load.predictions"
+    drift_metrics: "pjm.load.drift"
+    retraining_events: "pjm.load.retraining"
+
+spark:
+  app_name: "PJMRealTimeLoadForecasting"
+  master: "local[*]"
+  trigger_interval: "60 seconds"
+  shuffle_partitions: 8
+  max_offsets_per_trigger: 10000
+  checkpoint_base: "checkpoints/"
+
+retraining:
+  enabled: true
+  window_hours: 720
+  recent_ratio: 0.7
+  historical_ratio: 0.3
+  min_samples: 500
+  cooldown_hours: 24
+
+drift:
+  feature_columns:
+    - hour_of_day
+    - day_of_week
+    - month
+    - is_weekend
+    - lag_1
+    - lag_24
+    - lag_168
+    - rolling_24
+    - rolling_168
+  ks_pvalue_threshold: 0.05
+  psi_warning_threshold: 0.10
+  psi_critical_threshold: 0.25
+  rolling_mae_increase_ratio: 1.20
+
+model:
+  target_column: "mw"
+  datetime_column: "datetime_beginning_ept"
+  baseline_model_path: "artifacts/models/model_v1.joblib"
+  deployed_model_path: "artifacts/models/deployed_model.joblib"
+  baseline_stats_path: "artifacts/baselines/feature_stats.parquet"
+
+storage:
+  raw_parquet_path: "data/raw"
+  processed_parquet_path: "data/processed"
+  prediction_parquet_path: "data/processed/predictions"
+  drift_parquet_path: "data/processed/drift"
+
+database:
+  host: "localhost"
+  port: 5432
+  database: "mlops_load"
+  user: "postgres"
+  password: "postgres"

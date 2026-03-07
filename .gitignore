@@ -1,0 +1,8 @@
+.venv/
+data/
+*.csv
+*.parquet
+artifacts/
+checkpoints/
+__pycache__/
+*.pyc

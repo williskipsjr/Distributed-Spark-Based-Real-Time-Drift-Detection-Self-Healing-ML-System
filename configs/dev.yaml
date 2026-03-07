@@ -1,0 +1,42 @@
+app:
+  env: dev
+
+kafka:
+  bootstrap_servers: "localhost:9092"
+  consumer_group: "load-forecasting-spark-dev"
+  topics:
+    raw_load: "pjm.load.raw.dev"
+    predictions: "pjm.load.predictions.dev"
+    drift_metrics: "pjm.load.drift.dev"
+    retraining_events: "pjm.load.retraining.dev"
+
+spark:
+  app_name: "PJMRealTimeLoadForecasting-DEV"
+  master: "local[*]"
+  trigger_interval: "30 seconds"
+  shuffle_partitions: 4
+  max_offsets_per_trigger: 2000
+  checkpoint_base: "checkpoints/dev"
+
+retraining:
+  window_hours: 336
+  min_samples: 200
+  cooldown_hours: 6
+
+drift:
+  rolling_mae_increase_ratio: 1.10
+  psi_warning_threshold: 0.08
+
+model:
+  baseline_model_path: "artifacts/models/dev/model_v1.joblib"
+  deployed_model_path: "artifacts/models/dev/deployed_model.joblib"
+  baseline_stats_path: "artifacts/baselines/dev/feature_stats.parquet"
+
+storage:
+  raw_parquet_path: "data/raw/dev"
+  processed_parquet_path: "data/processed/dev"
+  prediction_parquet_path: "data/processed/dev/predictions"
+  drift_parquet_path: "data/processed/dev/drift"
+
+database:
+  database: "mlops_load_dev"
