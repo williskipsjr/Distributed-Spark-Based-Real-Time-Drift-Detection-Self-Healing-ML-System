@@ -129,7 +129,11 @@ def train_baseline(
     resolved_metrics.parent.mkdir(parents=True, exist_ok=True)
     resolved_feature_output.parent.mkdir(parents=True, exist_ok=True)
 
-    joblib.dump(model, resolved_model)
+    model_bundle = {
+        "model": model,
+        "features": FEATURE_COLUMNS,
+    }
+    joblib.dump(model_bundle, resolved_model)
 
     baseline_features = train_df[["datetime"] + FEATURE_COLUMNS + [TARGET_COLUMN]].copy()
     baseline_features.to_parquet(resolved_feature_output, index=False)

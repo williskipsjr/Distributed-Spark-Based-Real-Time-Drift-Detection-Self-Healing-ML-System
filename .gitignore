@@ -1,4 +1,9 @@
 .venv/
+venv/
+env/
+**/.venv/
+**/venv/
+**/env/
 data/
 *.csv
 *.parquet
@@ -6,3 +11,5 @@ artifacts/
 checkpoints/
 __pycache__/
 *.pyc
+spark-3.5.1-bin-hadoop3/
+spark-3.5.1-bin-hadoop3.tgz

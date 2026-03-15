@@ -7,7 +7,7 @@ kafka:
   bootstrap_servers: "localhost:9092"
   consumer_group: "load-forecasting-spark"
   topics:
-    raw_load: "pjm.load.raw"
+    raw_load: "pjm.load"
     predictions: "pjm.load.predictions"
     drift_metrics: "pjm.load.drift"
     retraining_events: "pjm.load.retraining"
