@@ -11,6 +11,7 @@ from kafka import KafkaProducer
 
 from src.common.config import Config
 from src.common.logging import configure_logging, get_logger
+from src.data.feature_builder import FEATURE_COLUMNS
 
 
 logger = get_logger(__name__)
@@ -26,9 +27,9 @@ def _load_base_config() -> Config:
 
 def _resolve_dataset_path(dataset_path: str | None) -> Path:
     root = _project_root()
-    resolved = Path(dataset_path) if dataset_path else root / "data" / "processed" / "pjm_cleaned.parquet"
+    resolved = Path(dataset_path) if dataset_path else root / "data" / "processed" / "pjm_supervised.parquet"
     if not resolved.exists():
-        raise FileNotFoundError(f"Cleaned dataset not found: {resolved}")
+        raise FileNotFoundError(f"Supervised dataset not found: {resolved}")
     return resolved
 
 
@@ -49,8 +50,10 @@ def run_producer(dataset_path: str | None = None, sleep_seconds: float = 0.1) ->
 
     resolved_dataset = _resolve_dataset_path(dataset_path)
     df = pd.read_parquet(resolved_dataset)
-    if "datetime" not in df.columns or "load_mw" not in df.columns:
-        raise KeyError("Expected columns 'datetime' and 'load_mw' in cleaned parquet dataset")
+    required_columns = ["datetime", "load_mw"] + FEATURE_COLUMNS
+    missing = [col for col in required_columns if col not in df.columns]
+    if missing:
+        raise KeyError(f"Supervised dataset is missing required columns: {', '.join(missing)}")
 
     df = df.copy()
     df["datetime"] = pd.to_datetime(df["datetime"], errors="coerce")
@@ -75,6 +78,17 @@ def run_producer(dataset_path: str | None = None, sleep_seconds: float = 0.1) ->
                 payload: dict[str, Any] = {
                     "timestamp": row["datetime"].isoformat(),
                     "load_mw": float(row["load_mw"]),
+                    "features": {
+                        "hour_of_day": int(row["hour_of_day"]),
+                        "day_of_week": int(row["day_of_week"]),
+                        "month": int(row["month"]),
+                        "is_weekend": int(row["is_weekend"]),
+                        "lag_1": float(row["lag_1"]),
+                        "lag_24": float(row["lag_24"]),
+                        "lag_168": float(row["lag_168"]),
+                        "rolling_24": float(row["rolling_24"]),
+                        "rolling_168": float(row["rolling_168"]),
+                    },
                 }
                 producer.send(topic, value=payload)
                 producer.flush()
