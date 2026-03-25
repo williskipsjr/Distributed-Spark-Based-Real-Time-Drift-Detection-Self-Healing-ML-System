@@ -60,6 +60,7 @@ def _split_windows(
 def _compute_drift_report(
     baseline_df: pd.DataFrame,
     recent_df: pd.DataFrame,
+    reference_time: datetime,
 ) -> dict[str, Any]:
     if baseline_df.empty:
         raise ValueError(
@@ -97,7 +98,24 @@ def _compute_drift_report(
     else:
         drift_type = "none"
 
+    baseline_start = baseline_df["timestamp_hour"].min()
+    baseline_end = baseline_df["timestamp_hour"].max()
+    recent_start = recent_df["timestamp_hour"].min()
+    recent_end = recent_df["timestamp_hour"].max()
+
     return {
+        "report_generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "reference_time_utc": reference_time.astimezone(timezone.utc).isoformat(),
+        "baseline_window": {
+            "start_utc": baseline_start.isoformat(),
+            "end_utc": baseline_end.isoformat(),
+            "rows": int(len(baseline_df)),
+        },
+        "recent_window": {
+            "start_utc": recent_start.isoformat(),
+            "end_utc": recent_end.isoformat(),
+            "rows": int(len(recent_df)),
+        },
         "drift_detected": drift_detected,
         "drift_type": drift_type,
         "baseline_error": baseline_mean_error,
@@ -136,7 +154,7 @@ def run_drift_detection(
 
     baseline_df, recent_df = _split_windows(metrics_df, now=reference.to_pydatetime())
 
-    report = _compute_drift_report(baseline_df, recent_df)
+    report = _compute_drift_report(baseline_df, recent_df, reference.to_pydatetime())
 
     if report["drift_detected"]:
         logger.warning(
