@@ -77,6 +77,11 @@ def _compute_drift_report(
     recent_mean_prediction = float(recent_df["mean_prediction"].mean())
 
     baseline_std_prediction = float(baseline_df["std_prediction"].mean())
+    # When each hourly window has a single record, std_prediction can be NaN.
+    # Fall back to variability of mean_prediction across baseline windows.
+    if pd.isna(baseline_std_prediction) or baseline_std_prediction <= 0:
+        fallback_std = float(baseline_df["mean_prediction"].std(ddof=0))
+        baseline_std_prediction = fallback_std if not pd.isna(fallback_std) else 0.0
 
     performance_drift = recent_mean_error > baseline_mean_error * 1.5
     prediction_drift = (
@@ -122,7 +127,14 @@ def run_drift_detection(
     )
 
     metrics_df = _load_hourly_metrics(resolved_metrics)
-    baseline_df, recent_df = _split_windows(metrics_df)
+
+    # Anchor detection windows to the newest metric timestamp so historical replay data
+    # (e.g., 2018/2019) can still be evaluated without relying on wall-clock time.
+    reference = metrics_df["timestamp_hour"].max()
+    if pd.isna(reference):
+        raise ValueError("Metrics dataset has no valid timestamp_hour values")
+
+    baseline_df, recent_df = _split_windows(metrics_df, now=reference.to_pydatetime())
 
     report = _compute_drift_report(baseline_df, recent_df)
 

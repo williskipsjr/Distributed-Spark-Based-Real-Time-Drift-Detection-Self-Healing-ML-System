@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import shutil
+import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -28,9 +30,17 @@ def _load_base_config() -> Config:
 
 
 def _create_spark_session() -> SparkSession:
+    current_python = sys.executable
     return (
         SparkSession.builder.appName("pjm-load-streaming")
-        .master("local[*]")
+        .master("local[1]")
+        .config("spark.pyspark.python", current_python)
+        .config("spark.pyspark.driver.python", current_python)
+        .config("spark.sql.execution.arrow.maxRecordsPerBatch", "512")
+        .config("spark.python.worker.reuse", "false")
+        .config("spark.executorEnv.OMP_NUM_THREADS", "1")
+        .config("spark.executorEnv.OPENBLAS_NUM_THREADS", "1")
+        .config("spark.executorEnv.MKL_NUM_THREADS", "1")
         .config("spark.hadoop.io.native.lib.available", "false")
         .config("spark.hadoop.fs.file.impl", "org.apache.hadoop.fs.RawLocalFileSystem")
         .config("spark.hadoop.fs.file.impl.disable.cache", "true")
@@ -156,48 +166,40 @@ def _validate_feature_batch(batch_df: DataFrame, batch_id: int) -> None:
     print("===============================================\n")
 
 
-def _build_prediction_udf(broadcast_model):
-    @F.pandas_udf(DoubleType())
-    def predict_load(pdf: pd.DataFrame) -> pd.Series:
+def _build_prediction_udf(broadcast_model, debug_mode: bool = False):
+    def predict_load_row(features) -> float:
         bundle = broadcast_model.value
         model = bundle["model"]
-        features = bundle["features"]
+        model_features = list(bundle["features"])
 
-        # CRITICAL FIX: When struct is unpacked, Spark may not preserve column order
-        # or may pass columns as a MultiIndex. Explicitly reindex to match model expectations.
-        features_df = pdf.copy().reset_index(drop=True)
+        if features is None:
+            return None
 
-        # Verify all feature columns exist
-        missing = [c for c in features if c not in features_df.columns]
-        if missing:
-            raise ValueError(f"Missing feature columns in UDF input: {missing}")
+        feature_map = features.asDict(recursive=False)
 
-        # SELECT COLUMNS IN EXPLICIT ORDER and ensure correct dtype
-        # This prevents any ambiguity in column ordering or struct unpacking
-        features_df = features_df[features].astype("float64")
+        row = []
+        for name in model_features:
+            value = feature_map.get(name)
+            if value is None:
+                raise ValueError(f"Missing feature '{name}' in UDF input")
+            row.append(float(value))
 
-        # Verify column order matches model expectations (critical for tree models)
-        if list(features_df.columns) != list(features):
-            raise ValueError(f"Feature column order mismatch. Got {list(features_df.columns)}, expected {list(features)}")
-
-        # Check for NaN/NULL values
-        if features_df.isnull().any().any():
-            raise ValueError("NaN/NULL detected in UDF feature batch")
-
-        if DEBUG_MODE and len(features_df) > 0:
+        if debug_mode:
             print("\n=== UDF INPUT SAMPLE ===")
-            print(features_df.head(1).to_dict(orient="records")[0])
+            print("MODEL FEATURES:", model_features)
+            print("DF COLUMNS:", list(feature_map.keys()))
+            print("DF VALUES:", row)
+            print(feature_map)
             print("========================\n")
 
-        # Run model inference
-        preds = model.predict(features_df)
+        pred = float(model.predict(np.array([row], dtype="float64"))[0])
 
-        if DEBUG_MODE and len(preds) > 0:
-            print("UDF PRED SAMPLE:", preds[:5])
+        if debug_mode:
+            print("UDF PRED SAMPLE:", [pred])
 
-        return pd.Series(preds, dtype="float64")
+        return pred
 
-    return predict_load
+    return F.udf(predict_load_row, DoubleType())
 
 
 def _validate_actual_load_column(df: DataFrame) -> None:
@@ -205,11 +207,11 @@ def _validate_actual_load_column(df: DataFrame) -> None:
         raise ValueError("actual_load column missing — error metrics cannot be computed")
 
 
-def _add_predictions(stream_df: DataFrame, broadcast_model, model_version: str) -> DataFrame:
+def _add_predictions(stream_df: DataFrame, broadcast_model, model_version: str, debug_mode: bool = False) -> DataFrame:
     _validate_actual_load_column(stream_df)
     prepared_df = _ensure_feature_columns(stream_df)
 
-    predict_load = _build_prediction_udf(broadcast_model)
+    predict_load = _build_prediction_udf(broadcast_model, debug_mode=debug_mode)
 
     return (
         prepared_df.withColumn(
@@ -271,6 +273,7 @@ def run_streaming_job(
     output_path: str | None = None,
     checkpoint_path: str | None = None,
     debug_mode: bool = DEBUG_MODE,
+    run_seconds: int | None = None,
 ) -> None:
     config = _load_base_config()
     bootstrap_servers = config.get("kafka.bootstrap_servers", "localhost:9092")
@@ -289,7 +292,7 @@ def run_streaming_job(
 
     spark = _create_spark_session()
 
-    model_path = root / "artifacts" / "models" / "model_v1.joblib"
+    model_path = root / "artifacts" / "models" / "model_v2.joblib"
     bundle = load_model(model_path=str(model_path))
     print("MODEL PATH:", str(model_path))
     print("MODEL FEATURES:", bundle["features"])
@@ -300,29 +303,33 @@ def run_streaming_job(
     stream_df = _prepare_stream(spark=spark, bootstrap_servers=bootstrap_servers, topic=topic)
     stream_df = _ensure_feature_columns(stream_df)
 
-    # Pre-UDF live feature debug stream
-    debug_stream = (
-        stream_df.select("timestamp", "actual_load", *FEATURE_COLUMNS)
-        .writeStream
-        .format("console")
-        .option("truncate", False)
-        .option("numRows", 20)
-        .option("checkpointLocation", str(resolved_checkpoint / "feature_debug_ckpt"))
-        .outputMode("append")
-        .start()
-    )
+    debug_stream = None
+    validation_stream = None
 
-    # Pre-UDF batch validation stream
-    validation_stream = (
-        stream_df.select(*FEATURE_COLUMNS)
-        .writeStream
-        .foreachBatch(_validate_feature_batch)
-        .option("checkpointLocation", str(resolved_checkpoint / "feature_validation_ckpt"))
-        .outputMode("append")
-        .start()
-    )
+    if debug_mode:
+        # Pre-UDF live feature debug stream
+        debug_stream = (
+            stream_df.select("timestamp", "actual_load", *FEATURE_COLUMNS)
+            .writeStream
+            .format("console")
+            .option("truncate", False)
+            .option("numRows", 20)
+            .option("checkpointLocation", str(resolved_checkpoint / "feature_debug_ckpt"))
+            .outputMode("append")
+            .start()
+        )
 
-    scored_df = _add_predictions(stream_df, broadcast_model, model_version)
+        # Pre-UDF batch validation stream
+        validation_stream = (
+            stream_df.select(*FEATURE_COLUMNS)
+            .writeStream
+            .foreachBatch(_validate_feature_batch)
+            .option("checkpointLocation", str(resolved_checkpoint / "feature_validation_ckpt"))
+            .outputMode("append")
+            .start()
+        )
+
+    scored_df = _add_predictions(stream_df, broadcast_model, model_version, debug_mode=debug_mode)
 
     if debug_mode:
         main_query = (
@@ -338,19 +345,24 @@ def run_streaming_job(
     else:
         metrics_df = _build_hourly_metrics(scored_df)
         main_query = (
-            metrics_df.writeStream
-            .outputMode("update")
+            metrics_df.writeStream.format("parquet")
+            .outputMode("append")
+            .option("path", str(resolved_output))
             .option("checkpointLocation", str(resolved_checkpoint / "metrics_ckpt"))
-            .foreachBatch(lambda batch_df, batch_id: _safe_batch_write(batch_df, batch_id, resolved_output))
             .start()
         )
 
     try:
-        main_query.awaitTermination()
+        if run_seconds is not None and run_seconds > 0:
+            finished = main_query.awaitTermination(timeout=run_seconds)
+            if not finished:
+                logger.info("run-window-reached", extra={"run_seconds": int(run_seconds)})
+        else:
+            main_query.awaitTermination()
     finally:
-        if debug_stream.isActive:
+        if debug_stream is not None and debug_stream.isActive:
             debug_stream.stop()
-        if validation_stream.isActive:
+        if validation_stream is not None and validation_stream.isActive:
             validation_stream.stop()
         if main_query.isActive:
             main_query.stop()
@@ -367,6 +379,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=DEBUG_MODE,
         help="Enable debug console output and disable parquet metrics sink",
     )
+    parser.add_argument(
+        "--run-seconds",
+        dest="run_seconds",
+        type=int,
+        default=None,
+        help="Optional run duration in seconds; stops the query gracefully after this window",
+    )
     return parser
 
 
@@ -377,6 +396,7 @@ def main() -> None:
         output_path=args.output_path,
         checkpoint_path=args.checkpoint_path,
         debug_mode=args.debug_mode,
+        run_seconds=args.run_seconds,
     )
 
 

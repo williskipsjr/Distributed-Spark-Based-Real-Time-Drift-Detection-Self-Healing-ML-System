@@ -1,3 +1,213 @@
+You are a senior ML systems engineer working on a distributed real-time ML pipeline.
+
+I need you to debug and FIX a critical issue in my project:
+
+Project: Distributed Spark-Based Real-Time Data Drift Detection and Self-Healing ML System
+
+---
+
+## 🚨 CURRENT PROBLEM (CRITICAL)
+
+The streaming pipeline is FULLY WORKING:
+
+* Kafka producer streams PJM load data (2019 dataset)
+* Spark Structured Streaming processes data correctly
+* Feature engineering is correct and verified
+
+Feature values (from logs):
+
+* actual_load ≈ 120k–190k
+* lag_1 ≈ 150k–180k
+* rolling features ≈ 150k
+
+However, the ML model predictions are COMPLETELY WRONG:
+
+Example:
+
+* predicted_load ≈ -50,000 (negative values)
+* actual_load ≈ 150,000
+* error ≈ 180,000+
+
+So:
+👉 Infrastructure is correct
+👉 Features are correct
+👉 Model is BROKEN
+
+---
+
+## 🧠 ROOT CAUSE (IMPORTANT CONTEXT)
+
+The current model (model_v1.joblib):
+
+* Was trained earlier on a DIFFERENT dataset (2018)
+* Likely used different scaling / feature distribution
+* Possibly trained on zone-level or normalized data
+
+Now it is being used on:
+
+* Aggregated total load
+* Different distribution (~150k scale)
+
+This has caused:
+👉 COMPLETE TRAIN-INFERENCE MISMATCH
+
+This is NOT data drift — this is a broken model.
+
+---
+
+## 🎯 OBJECTIVE
+
+Fix the system PROPERLY so that:
+
+1. Model predictions are realistic (same scale as actual_load)
+2. Model is trained using EXACT SAME feature pipeline as streaming
+3. The system becomes stable so drift detection can be implemented AFTER
+
+---
+
+## 🔧 WHAT YOU NEED TO DO
+
+### STEP 1 — CREATE A CLEAN TRAINING PIPELINE
+
+Using dataset:
+data/stream_dataset/hrl_load_metered-2019.csv
+
+You MUST:
+
+* Recreate the SAME features used in Spark streaming:
+
+  * hour_of_day
+  * day_of_week
+  * month
+  * is_weekend
+  * lag_1
+  * lag_24
+  * lag_168
+  * rolling_24
+  * rolling_168
+
+IMPORTANT:
+
+* Use identical logic as streaming job
+* Ensure no data leakage
+* Drop nulls properly
+
+---
+
+### STEP 2 — TRAIN A NEW MODEL
+
+* Use XGBoost (preferred) or LightGBM
+* Target = actual_load
+* No normalization unless explicitly handled during inference
+* Keep it simple and robust
+
+---
+
+### STEP 3 — VALIDATE OFFLINE
+
+Before saving the model:
+
+* Print predictions vs actual
+* Ensure:
+
+  * predictions are positive
+  * predictions are in correct scale (~100k–200k)
+  * MAE is reasonable (<10k)
+
+If not → FIX before proceeding
+
+---
+
+### STEP 4 — SAVE MODEL CORRECTLY
+
+* Save as artifacts/models/model_v2.joblib
+* Ensure compatibility with existing model loader
+
+---
+
+### STEP 5 — ENSURE INFERENCE COMPATIBILITY
+
+The Spark UDF expects:
+
+* input = feature vector (same order)
+* output = scalar prediction
+
+Ensure:
+
+* feature ordering matches exactly
+* no missing transformations
+
+---
+
+### STEP 6 — OPTIONAL BUT IMPORTANT
+
+If scaling is used:
+
+* Save scaler
+* Apply same scaler inside Spark UDF
+
+Otherwise:
+
+* DO NOT use scaling
+
+---
+
+## ⚠️ STRICT CONSTRAINTS
+
+DO NOT:
+
+* Modify Kafka producer
+* Modify Spark feature engineering logic
+* Change feature names
+
+ONLY:
+
+* Fix training pipeline
+* Fix model
+
+---
+
+## 🎯 EXPECTED FINAL OUTPUT
+
+When running streaming job:
+
+Example:
+
+actual_load: 162000
+predicted_load: 158000
+error: ~4000
+
+NOT:
+
+predicted_load: -50000 ❌
+
+---
+
+## 🧠 FINAL GOAL
+
+Once this is fixed:
+
+I will implement:
+
+* drift detection
+* auto retraining (self-healing)
+
+But that is NOT part of this task.
+
+---
+
+## 📦 DELIVERABLES
+
+Provide:
+
+1. Complete training script (Python)
+2. Any required preprocessing code
+3. Instructions to replace model
+4. Notes on potential pitfalls
+
+---
+
+Think step-by-step. Do not assume anything. Fix this like a production ML system.
 # Production Debug Report: Training-Serving Skew (180,000 MW Error)
 
 **Date**: 2026-03-24
