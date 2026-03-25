@@ -190,3 +190,20 @@ PY
 - Streaming inference now runs with stabilized writer flow and graceful timed termination support.
 - Drift detection runs successfully and reports structured JSON output.
 - Next phase: self-healing trigger/retrain automation based on drift report.
+
+## 11. Documentation Map
+
+Project documentation is organized under `docs/`.
+
+- Main index: `docs/INDEX.md`
+- Context and roadmap: `docs/PROJECT_CONTEXT.md`, `docs/RECENT_CONTEXT.md`, `docs/NEXT_STEPS.md`
+- Logs: `docs/SESSION_LOG.md`, `docs/ISSUES_LOG.md`
+- Technical references: `docs/ARCHITECTURE.md`, `docs/DEBUG_GUIDE.md`
+
+Use `docs/INDEX.md` as the entry point.
+
+## 12. Repository Hygiene
+
+- Runtime outputs are intentionally ignored (`*.log`, data/artifacts/checkpoints).
+- Before sharing analysis results, prefer scripts/notebooks or docs entries rather than committing local logs.
+- If interrupted runs produce broken parquet files, remove zero-byte parts before analysis.
