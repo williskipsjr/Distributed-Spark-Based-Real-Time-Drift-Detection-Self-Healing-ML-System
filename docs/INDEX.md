@@ -20,6 +20,11 @@ Central navigation for project documentation.
 - [ARCHITECTURE.md](ARCHITECTURE.md): System architecture, components, and data flow.
 - [DEBUG_GUIDE.md](DEBUG_GUIDE.md): Debugging runbook, diagnostics, and troubleshooting patterns.
 
+## Historical Reports
+
+- [reports/PRODUCTION_DEBUG_REPORT.md](reports/PRODUCTION_DEBUG_REPORT.md): Incident-focused deep dive from the production debugging phase.
+- [reports/FINAL_REPORT.md](reports/FINAL_REPORT.md): Consolidated final report from the aggregation mismatch investigation.
+
 ## Script Organization
 
 - [../scripts/README.md](../scripts/README.md): Index for operational helper scripts and archived debug scripts.
