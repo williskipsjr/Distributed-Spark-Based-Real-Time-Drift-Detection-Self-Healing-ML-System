@@ -496,8 +496,8 @@ print(f"Predictions mean: {preds.mean():,.0f}")  # Should now be ~180k
 ## Files Modified
 
 - `src/streaming/spark_job.py`: Enhanced UDF error handling, added distribution warnings
-- `debug_step_by_step.py`: Comprehensive 6-step debug script
-- `diagnose_aggregation.py`: Data aggregation analysis
+- `scripts/archive_debug/debug_step_by_step.py`: Comprehensive 6-step debug script
+- `scripts/archive_debug/diagnose_aggregation.py`: Data aggregation analysis
 
 ## Files to Modify (Next Steps)
 
@@ -508,7 +508,7 @@ print(f"Predictions mean: {preds.mean():,.0f}")  # Should now be ~180k
 
 ## Next Steps
 
-1. **Immediate**: Run `python debug_step_by_step.py` to confirm findings
+1. **Immediate**: Run `python scripts/archive_debug/debug_step_by_step.py` to confirm findings
 2. **Short-term**: Implement aggregation in Kafka producer (Option 1)
 3. **Testing**: Deploy and monitor distribution shift warnings
 4. **Long-term**: Add data validation contract to prevent future issues

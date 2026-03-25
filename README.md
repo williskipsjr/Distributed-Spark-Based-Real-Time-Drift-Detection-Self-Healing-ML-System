@@ -199,6 +199,7 @@ Project documentation is organized under `docs/`.
 - Context and roadmap: `docs/PROJECT_CONTEXT.md`, `docs/RECENT_CONTEXT.md`, `docs/NEXT_STEPS.md`
 - Logs: `docs/SESSION_LOG.md`, `docs/ISSUES_LOG.md`
 - Technical references: `docs/ARCHITECTURE.md`, `docs/DEBUG_GUIDE.md`
+- Script index: `scripts/README.md`
 
 Use `docs/INDEX.md` as the entry point.
 

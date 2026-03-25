@@ -20,6 +20,10 @@ Central navigation for project documentation.
 - [ARCHITECTURE.md](ARCHITECTURE.md): System architecture, components, and data flow.
 - [DEBUG_GUIDE.md](DEBUG_GUIDE.md): Debugging runbook, diagnostics, and troubleshooting patterns.
 
+## Script Organization
+
+- [../scripts/README.md](../scripts/README.md): Index for operational helper scripts and archived debug scripts.
+
 ## Usage Recommendation
 
 1. Start with [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).

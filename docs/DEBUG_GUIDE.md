@@ -19,7 +19,7 @@ Expected:
 ## 2) Validate producer data scale before streaming
 
 ```bash
-python check_producer_data.py
+python scripts/utilities/check_producer_data.py
 ```
 
 Expected:
