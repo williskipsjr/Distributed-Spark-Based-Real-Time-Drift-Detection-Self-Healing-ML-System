@@ -274,6 +274,8 @@ def run_streaming_job(
     checkpoint_path: str | None = None,
     debug_mode: bool = DEBUG_MODE,
     run_seconds: int | None = None,
+    reset_checkpoint: bool = False,
+    clear_predictions: bool = False,
 ) -> None:
     config = _load_base_config()
     bootstrap_servers = config.get("kafka.bootstrap_servers", "localhost:9092")
@@ -285,10 +287,15 @@ def run_streaming_job(
     predictions_output = root / "data" / "predictions"
 
     resolved_output.mkdir(parents=True, exist_ok=True)
-    if resolved_checkpoint.exists():
-        shutil.rmtree(resolved_checkpoint)
     resolved_checkpoint.mkdir(parents=True, exist_ok=True)
-    _clear_directory_contents(predictions_output)
+
+    if reset_checkpoint:
+        logger.info("resetting-checkpoint-directory", extra={"checkpoint_path": str(resolved_checkpoint)})
+        _clear_directory_contents(resolved_checkpoint)
+
+    if clear_predictions:
+        logger.info("clearing-predictions-directory", extra={"predictions_path": str(predictions_output)})
+        _clear_directory_contents(predictions_output)
 
     spark = _create_spark_session()
 
@@ -386,6 +393,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional run duration in seconds; stops the query gracefully after this window",
     )
+    parser.add_argument(
+        "--reset-checkpoint",
+        action="store_true",
+        help="Clear Spark checkpoint state before starting (fresh run)",
+    )
+    parser.add_argument(
+        "--clear-predictions",
+        action="store_true",
+        help="Clear data/predictions directory before starting",
+    )
     return parser
 
 
@@ -397,6 +414,8 @@ def main() -> None:
         checkpoint_path=args.checkpoint_path,
         debug_mode=args.debug_mode,
         run_seconds=args.run_seconds,
+        reset_checkpoint=args.reset_checkpoint,
+        clear_predictions=args.clear_predictions,
     )
 
 

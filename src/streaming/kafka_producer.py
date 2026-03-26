@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -136,13 +137,36 @@ def _create_producer(bootstrap_servers: str) -> KafkaProducer:
     )
 
 
-def run_producer(dataset_path: str | None = None, sleep_seconds: float = 0.1) -> None:
+def _load_resume_state(state_path: Path) -> dict[str, Any] | None:
+    if not state_path.exists():
+        return None
+    try:
+        return json.loads(state_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("resume-state-load-failed", extra={"state_path": str(state_path), "error": str(exc)})
+        return None
+
+
+def _save_resume_state(state_path: Path, state: dict[str, Any]) -> None:
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def run_producer(
+    dataset_path: str | None = None,
+    sleep_seconds: float = 0.1,
+    resume: bool = True,
+    state_path: str | None = None,
+    reset_state: bool = False,
+    loop_forever: bool = True,
+) -> None:
     config = _load_base_config()
     bootstrap_servers = config.get("kafka.bootstrap_servers", "localhost:9092")
     topic = config.get("kafka.topics.raw_load", "pjm.load")
 
     resolved_dataset = _resolve_dataset_path(dataset_path)
     df = _load_and_prepare_data(resolved_dataset)
+    resolved_state_path = Path(state_path) if state_path else _project_root() / "checkpoints" / "producer" / "producer_state.json"
 
     # Verify data is in expected range (aggregate PJM-wide)
     mean_load = df["load_mw"].mean()
@@ -159,6 +183,46 @@ def run_producer(dataset_path: str | None = None, sleep_seconds: float = 0.1) ->
     df["datetime"] = pd.to_datetime(df["datetime"], errors="coerce")
     df = df.dropna(subset=["datetime", "load_mw"]).sort_values("datetime").reset_index(drop=True)
 
+    if reset_state and resolved_state_path.exists():
+        resolved_state_path.unlink()
+        logger.info("producer-resume-state-reset", extra={"state_path": str(resolved_state_path)})
+
+    start_index = 0
+    if resume:
+        resume_state = _load_resume_state(resolved_state_path)
+        if resume_state:
+            saved_dataset = str(resume_state.get("dataset_path", ""))
+            saved_rows = int(resume_state.get("rows", 0))
+            candidate_index = int(resume_state.get("next_index", 0))
+            if saved_dataset == str(resolved_dataset) and saved_rows == len(df) and 0 <= candidate_index < len(df):
+                start_index = candidate_index
+                logger.info(
+                    "producer-resume-enabled",
+                    extra={
+                        "state_path": str(resolved_state_path),
+                        "start_index": start_index,
+                        "dataset_path": str(resolved_dataset),
+                    },
+                )
+            elif saved_dataset != str(resolved_dataset):
+                logger.info(
+                    "producer-resume-state-ignored",
+                    extra={
+                        "reason": "dataset-mismatch",
+                        "state_dataset": saved_dataset,
+                        "current_dataset": str(resolved_dataset),
+                    },
+                )
+            elif saved_rows != len(df):
+                logger.info(
+                    "producer-resume-state-ignored",
+                    extra={
+                        "reason": "row-count-mismatch",
+                        "state_rows": saved_rows,
+                        "current_rows": len(df),
+                    },
+                )
+
     producer = _create_producer(bootstrap_servers=bootstrap_servers)
     logger.info(
         "producer-start",
@@ -169,44 +233,77 @@ def run_producer(dataset_path: str | None = None, sleep_seconds: float = 0.1) ->
             "bootstrap_servers": bootstrap_servers,
             "sleep_seconds": sleep_seconds,
             "mean_load_mw": float(mean_load),
+            "resume": resume,
+            "state_path": str(resolved_state_path),
+            "start_index": start_index,
+            "loop_forever": loop_forever,
         },
     )
 
     published_count = 0
+    current_index = start_index
     try:
         while True:
-            for _, row in df.iterrows():
-                payload: dict[str, Any] = {
-                    "timestamp": row["datetime"].isoformat(),
-                    "load_mw": float(row["load_mw"]),
-                    "features": {
-                        "hour_of_day": int(row["hour_of_day"]),
-                        "day_of_week": int(row["day_of_week"]),
-                        "month": int(row["month"]),
-                        "is_weekend": int(row["is_weekend"]),
-                        "lag_1": float(row["lag_1"]),
-                        "lag_24": float(row["lag_24"]),
-                        "lag_168": float(row["lag_168"]),
-                        "rolling_24": float(row["rolling_24"]),
-                        "rolling_168": float(row["rolling_168"]),
-                    },
-                }
-                producer.send(topic, value=payload)
-                producer.flush()
+            if current_index >= len(df):
+                if loop_forever:
+                    current_index = 0
+                else:
+                    logger.info("producer-complete", extra={"published_records": published_count})
+                    break
 
-                published_count += 1
-                logger.info(
-                    "record-published",
-                    extra={
-                        "topic": topic,
-                        "offset_record": published_count,
-                        "timestamp": payload["timestamp"],
-                        "load_mw": payload["load_mw"],
+            row = df.iloc[current_index]
+            payload: dict[str, Any] = {
+                "timestamp": row["datetime"].isoformat(),
+                "load_mw": float(row["load_mw"]),
+                "features": {
+                    "hour_of_day": int(row["hour_of_day"]),
+                    "day_of_week": int(row["day_of_week"]),
+                    "month": int(row["month"]),
+                    "is_weekend": int(row["is_weekend"]),
+                    "lag_1": float(row["lag_1"]),
+                    "lag_24": float(row["lag_24"]),
+                    "lag_168": float(row["lag_168"]),
+                    "rolling_24": float(row["rolling_24"]),
+                    "rolling_168": float(row["rolling_168"]),
+                },
+            }
+            producer.send(topic, value=payload)
+            producer.flush()
+
+            current_index += 1
+            published_count += 1
+
+            if resume:
+                _save_resume_state(
+                    resolved_state_path,
+                    {
+                        "dataset_path": str(resolved_dataset),
+                        "rows": len(df),
+                        "next_index": current_index,
+                        "updated_at_utc": datetime.now(timezone.utc).isoformat(),
                     },
                 )
-                time.sleep(sleep_seconds)
+
+            logger.info(
+                "record-published",
+                extra={
+                    "topic": topic,
+                    "offset_record": published_count,
+                    "row_index": current_index - 1,
+                    "timestamp": payload["timestamp"],
+                    "load_mw": payload["load_mw"],
+                },
+            )
+            time.sleep(sleep_seconds)
     except KeyboardInterrupt:
-        logger.info("producer-stop", extra={"published_records": published_count, "reason": "keyboard-interrupt"})
+        logger.info(
+            "producer-stop",
+            extra={
+                "published_records": published_count,
+                "next_index": current_index,
+                "reason": "keyboard-interrupt",
+            },
+        )
     finally:
         producer.close()
 
@@ -229,6 +326,29 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0.1,
         help="Delay between published records (seconds)",
     )
+    parser.add_argument(
+        "--resume",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Resume publishing from last saved row index",
+    )
+    parser.add_argument(
+        "--state-path",
+        dest="state_path",
+        default=None,
+        help="Path to producer resume state JSON file",
+    )
+    parser.add_argument(
+        "--reset-state",
+        action="store_true",
+        help="Delete producer resume state before starting",
+    )
+    parser.add_argument(
+        "--loop-forever",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Loop dataset forever; disable to run one pass",
+    )
     parser.add_argument("--log-level", dest="log_level", default="INFO", help="Logging level")
     return parser
 
@@ -237,7 +357,14 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
     configure_logging(level=args.log_level, json_logs=True)
-    run_producer(dataset_path=args.dataset_path, sleep_seconds=args.sleep_seconds)
+    run_producer(
+        dataset_path=args.dataset_path,
+        sleep_seconds=args.sleep_seconds,
+        resume=args.resume,
+        state_path=args.state_path,
+        reset_state=args.reset_state,
+        loop_forever=args.loop_forever,
+    )
 
 
 if __name__ == "__main__":

@@ -98,6 +98,19 @@ Notes:
 
 - Raw CSV is aggregated to PJM-wide load before feature generation.
 - Producer sends payload with timestamp, load, and feature object.
+ - Producer resume cursor is stored in `checkpoints/producer/producer_state.json` and resumes by default.
+
+Run one pass (no infinite looping):
+
+```bash
+python -m src.streaming.kafka_producer --dataset "data/stream_dataset/hrl_load_metered-2019.csv" --sleep-seconds 0.1 --no-loop-forever
+```
+
+Start over from the beginning (reset cursor):
+
+```bash
+python -m src.streaming.kafka_producer --dataset "data/stream_dataset/hrl_load_metered-2019.csv" --sleep-seconds 0.1 --reset-state
+```
 
 ### 5.2 Spark Job (Production Mode)
 
@@ -115,6 +128,13 @@ Important:
 
 - The `export PYSPARK_PYTHON` and `export PYSPARK_DRIVER_PYTHON` lines are required to force Spark driver/worker interpreter consistency.
 - Use `--run-seconds` instead of shell `timeout` for graceful shutdown.
+- Spark resumes from prior offsets/state by default using checkpoint path `checkpoints/spark_predictions/`.
+
+Start from scratch (fresh Spark state):
+
+```bash
+python -m src.streaming.spark_job --no-debug-mode --run-seconds 120 --reset-checkpoint
+```
 
 ### 5.3 Spark Job (Debug Mode)
 
@@ -163,11 +183,11 @@ cat artifacts/drift/drift_report.json
 
 ## 9. Common Operations
 
-Clear stale output/checkpoints before a fresh replay run:
+Fresh replay reset (producer cursor + Spark checkpoint):
 
 ```bash
-rm -rf data/metrics/hourly_metrics/*
-rm -rf checkpoints/spark_predictions/*
+python -m src.streaming.kafka_producer --dataset "data/stream_dataset/hrl_load_metered-2019.csv" --reset-state --no-loop-forever
+python -m src.streaming.spark_job --no-debug-mode --run-seconds 120 --reset-checkpoint
 ```
 
 Remove zero-byte parquet files (if interrupted writes occurred):
