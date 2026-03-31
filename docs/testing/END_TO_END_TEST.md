@@ -123,6 +123,13 @@ netstat -ano | findstr :9092
 **Purpose:** Consumes Kafka messages, runs predictions, writes hourly metrics  
 **Start:** After Broker is listening on port 9092 (5+ seconds)
 
+If running Spark from WSL/bash, export Python interpreter variables first:
+
+```bash
+export PYSPARK_PYTHON="$(which python)"
+export PYSPARK_DRIVER_PYTHON="$(which python)"
+```
+
 ```powershell
 cd "c:\Users\Willis\OneDrive\Documents\IIIT-DWD\2nd Year\4th Sem\Big Data\BDA-Project\Distributed-Spark-Based-Real-Time-Drift-Detection-Self-Healing-ML-System"
 
