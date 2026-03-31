@@ -12,6 +12,7 @@ Core flow:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,32 @@ def _project_root() -> Path:
 
 def _models_dir() -> Path:
     return _project_root() / "artifacts" / "models"
+
+
+def _active_model_pointer_path() -> Path:
+    return _models_dir() / "active_model.json"
+
+
+def _resolve_active_model_path() -> Path | None:
+    # Reads active pointer file so serving can follow promoted model.
+    pointer_path = _active_model_pointer_path()
+    if not pointer_path.exists():
+        return None
+
+    try:
+        payload = json.loads(pointer_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    active_path = payload.get("active_model_path")
+    if not isinstance(active_path, str) or not active_path:
+        return None
+
+    resolved = Path(active_path)
+    return resolved if resolved.exists() else None
 
 
 def _find_latest_model(models_dir: Path) -> Path:
@@ -68,7 +95,14 @@ def load_model(model_path: str | None = None):
     from ``artifacts/models`` is loaded.
     """
 
-    resolved_path = Path(model_path) if model_path else _find_latest_model(_models_dir())
+    # ----------------------------------------------------
+    # ----------------- Model Load Block -----------------
+    # Resolves explicit path or active/latest model and normalizes format.
+    # ----------------------------------------------------
+    if model_path:
+        resolved_path = Path(model_path)
+    else:
+        resolved_path = _resolve_active_model_path() or _find_latest_model(_models_dir())
     if not resolved_path.exists():
         raise FileNotFoundError(f"Model artifact not found: {resolved_path}")
 
@@ -101,6 +135,10 @@ def predict(model_or_bundle, features_df: pd.DataFrame) -> pd.Series:
     Returns a pandas Series aligned to ``features_df`` index.
     """
 
+    # ----------------------------------------------------
+    # ---------------- Prediction Inference --------------
+    # Validates feature contract and runs estimator prediction.
+    # ----------------------------------------------------
     if not isinstance(features_df, pd.DataFrame):
         raise TypeError("features_df must be a pandas.DataFrame")
 
@@ -174,6 +212,7 @@ def _infer_model_version(model_path: Path) -> str:
 
 
 def _attach_metadata(model: Any, resolved_path: Path, inferred_version: str) -> None:
+    # Backfills minimal metadata so downstream logs are informative.
     if not hasattr(model, "model_version"):
         try:
             setattr(model, "model_version", inferred_version)

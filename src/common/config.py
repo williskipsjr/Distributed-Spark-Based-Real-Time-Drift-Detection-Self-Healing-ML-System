@@ -9,6 +9,10 @@ import yaml
 
 
 class Config:
+    # ----------------------------------------------------
+    # ---------------- Config Container ------------------
+    # Wraps merged YAML settings and exposes dot-path lookup.
+    # ----------------------------------------------------
     def __init__(self, data: dict[str, Any], source_files: list[str] | None = None) -> None:
         self._data = data
         self.source_files = source_files or []
@@ -41,6 +45,10 @@ class Config:
         env_file: str | None = None,
         env_name: str | None = None,
     ) -> "Config":
+        # ----------------------------------------------------
+        # --------------- Config Load and Merge --------------
+        # Loads base + environment YAML, then deep-merges them.
+        # ----------------------------------------------------
         root_dir = Path(__file__).resolve().parents[2]
         resolved_config_dir = Path(config_dir) if config_dir else root_dir / "configs"
 
@@ -103,6 +111,10 @@ _cached_config: Config | None = None
 
 
 def get_config(reload: bool = False) -> Config:
+    # ----------------------------------------------------
+    # -------------- Global Config Access ----------------
+    # Uses a tiny module-level cache to avoid repeated disk reads.
+    # ----------------------------------------------------
     global _cached_config
     if _cached_config is None or reload:
         _cached_config = Config.load()

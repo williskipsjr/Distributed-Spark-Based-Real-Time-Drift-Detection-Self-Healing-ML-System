@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,6 +49,46 @@ def _resolve_dataset_path(dataset_path: str | None) -> Path:
         return raw
 
     raise FileNotFoundError("No dataset found. Tried: pjm_supervised.parquet, hrl_load_metered-2018.csv")
+
+
+def _resolve_dataset_sequence(dataset_path: str | None) -> list[Path]:
+    """
+    Resolve producer dataset sequence.
+
+    If an explicit dataset path looks like a yearly file name (e.g., ...-2020.csv),
+    include that file and all later yearly siblings with the same prefix/suffix.
+    Otherwise, return a single resolved dataset.
+    """
+    # ----------------------------------------------------
+    # ------------- Dataset Sequence Resolver ------------
+    # Expands a yearly seed file (e.g., 2020) into ordered siblings.
+    # ----------------------------------------------------
+    resolved = _resolve_dataset_path(dataset_path)
+    if dataset_path is None:
+        return [resolved]
+
+    match = re.match(r"^(.*?)(\d{4})$", resolved.stem)
+    if not match:
+        return [resolved]
+
+    stem_prefix, year_text = match.groups()
+    start_year = int(year_text)
+
+    candidates: list[tuple[int, Path]] = []
+    pattern = f"{stem_prefix}*{resolved.suffix}"
+    for sibling in resolved.parent.glob(pattern):
+        sibling_match = re.match(rf"^{re.escape(stem_prefix)}(\d{{4}})$", sibling.stem)
+        if not sibling_match:
+            continue
+        year = int(sibling_match.group(1))
+        if year >= start_year:
+            candidates.append((year, sibling.resolve()))
+
+    if not candidates:
+        return [resolved]
+
+    candidates.sort(key=lambda item: item[0])
+    return [path for _, path in candidates]
 
 
 def _load_and_prepare_data(dataset_path: Path) -> pd.DataFrame:
@@ -149,7 +191,34 @@ def _load_resume_state(state_path: Path) -> dict[str, Any] | None:
 
 def _save_resume_state(state_path: Path, state: dict[str, Any]) -> None:
     state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    temp_path = state_path.with_suffix(state_path.suffix + f".{os.getpid()}.tmp")
+    payload = json.dumps(state, indent=2)
+    try:
+        temp_path.write_text(payload, encoding="utf-8")
+
+        # Prefer atomic replacement; retry briefly for transient Windows lock contention
+        for attempt in range(3):
+            try:
+                temp_path.replace(state_path)
+                return
+            except PermissionError:
+                if attempt == 2:
+                    break
+                time.sleep(0.05 * (attempt + 1))
+
+        # Fallback path for OneDrive/Windows when rename is blocked by file handles.
+        state_path.write_text(payload, encoding="utf-8")
+    except Exception as exc:
+        logger.warning(
+            "resume-state-save-failed",
+            extra={"state_path": str(state_path), "error": str(exc)},
+        )
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
 
 
 def run_producer(
@@ -160,74 +229,110 @@ def run_producer(
     reset_state: bool = False,
     loop_forever: bool = True,
 ) -> None:
+    # ----------------------------------------------------
+    # ---------------- Kafka Produce Loop ---------------
+    # Streams records, persists resume state, and cycles datasets.
+    # ----------------------------------------------------
     config = _load_base_config()
     bootstrap_servers = config.get("kafka.bootstrap_servers", "localhost:9092")
     topic = config.get("kafka.topics.raw_load", "pjm.load")
 
-    resolved_dataset = _resolve_dataset_path(dataset_path)
-    df = _load_and_prepare_data(resolved_dataset)
+    dataset_sequence = _resolve_dataset_sequence(dataset_path)
+    dataset_sequence_as_str = [str(path) for path in dataset_sequence]
     resolved_state_path = Path(state_path) if state_path else _project_root() / "checkpoints" / "producer" / "producer_state.json"
-
-    # Verify data is in expected range (aggregate PJM-wide)
-    mean_load = df["load_mw"].mean()
-    if mean_load < 50000:
-        logger.warning(
-            "data-distribution-warning",
-            extra={
-                "mean_load": mean_load,
-                "warning": "Mean load < 50k. Data may not be aggregated to PJM-wide level!",
-                "expected_mean": "~180k",
-            },
-        )
-
-    df["datetime"] = pd.to_datetime(df["datetime"], errors="coerce")
-    df = df.dropna(subset=["datetime", "load_mw"]).sort_values("datetime").reset_index(drop=True)
 
     if reset_state and resolved_state_path.exists():
         resolved_state_path.unlink()
         logger.info("producer-resume-state-reset", extra={"state_path": str(resolved_state_path)})
 
+    dataset_index = 0
     start_index = 0
     if resume:
         resume_state = _load_resume_state(resolved_state_path)
         if resume_state:
-            saved_dataset = str(resume_state.get("dataset_path", ""))
-            saved_rows = int(resume_state.get("rows", 0))
+            saved_sequence = list(resume_state.get("dataset_sequence", []))
+            candidate_dataset_index = int(resume_state.get("dataset_index", 0))
             candidate_index = int(resume_state.get("next_index", 0))
-            if saved_dataset == str(resolved_dataset) and saved_rows == len(df) and 0 <= candidate_index < len(df):
+
+            if (
+                saved_sequence == dataset_sequence_as_str
+                and 0 <= candidate_dataset_index < len(dataset_sequence)
+                and candidate_index >= 0
+            ):
+                dataset_index = candidate_dataset_index
                 start_index = candidate_index
                 logger.info(
                     "producer-resume-enabled",
                     extra={
                         "state_path": str(resolved_state_path),
+                        "dataset_index": dataset_index,
                         "start_index": start_index,
-                        "dataset_path": str(resolved_dataset),
+                        "dataset_path": dataset_sequence_as_str[dataset_index],
                     },
                 )
-            elif saved_dataset != str(resolved_dataset):
+            elif saved_sequence != dataset_sequence_as_str:
                 logger.info(
                     "producer-resume-state-ignored",
                     extra={
-                        "reason": "dataset-mismatch",
-                        "state_dataset": saved_dataset,
-                        "current_dataset": str(resolved_dataset),
+                        "reason": "dataset-sequence-mismatch",
                     },
                 )
-            elif saved_rows != len(df):
-                logger.info(
-                    "producer-resume-state-ignored",
-                    extra={
-                        "reason": "row-count-mismatch",
-                        "state_rows": saved_rows,
-                        "current_rows": len(df),
-                    },
-                )
+
+    def _load_dataset(index: int) -> tuple[Path, pd.DataFrame, float]:
+        resolved_dataset = dataset_sequence[index]
+        loaded_df = _load_and_prepare_data(resolved_dataset)
+        mean_load = loaded_df["load_mw"].mean()
+        if mean_load < 50000:
+            logger.warning(
+                "data-distribution-warning",
+                extra={
+                    "mean_load": mean_load,
+                    "warning": "Mean load < 50k. Data may not be aggregated to PJM-wide level!",
+                    "expected_mean": "~180k",
+                    "dataset_path": str(resolved_dataset),
+                },
+            )
+
+        loaded_df["datetime"] = pd.to_datetime(loaded_df["datetime"], errors="coerce")
+        loaded_df = loaded_df.dropna(subset=["datetime", "load_mw"]).sort_values("datetime").reset_index(drop=True)
+        return resolved_dataset, loaded_df, float(mean_load)
+
+    resolved_dataset, df, mean_load = _load_dataset(dataset_index)
+    if start_index >= len(df):
+        logger.info(
+            "producer-resume-state-ignored",
+            extra={
+                "reason": "index-out-of-range",
+                "dataset_path": str(resolved_dataset),
+                "state_next_index": start_index,
+                "dataset_rows": len(df),
+            },
+        )
+        start_index = 0
+
+    def _save_state(next_index: int) -> None:
+        if not resume:
+            return
+        _save_resume_state(
+            resolved_state_path,
+            {
+                "dataset_sequence": dataset_sequence_as_str,
+                "dataset_index": dataset_index,
+                "dataset_path": str(resolved_dataset),
+                "rows": len(df),
+                "next_index": next_index,
+                "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
     producer = _create_producer(bootstrap_servers=bootstrap_servers)
     logger.info(
         "producer-start",
         extra={
             "dataset_path": str(resolved_dataset),
+            "dataset_sequence": dataset_sequence_as_str,
+            "dataset_index": dataset_index,
+            "dataset_count": len(dataset_sequence),
             "rows": int(len(df)),
             "topic": topic,
             "bootstrap_servers": bootstrap_servers,
@@ -242,11 +347,46 @@ def run_producer(
 
     published_count = 0
     current_index = start_index
+
+    # Initialize resume state immediately so restarts always have a valid JSON payload,
+    # even if the process is interrupted before the first publish loop iteration.
+    _save_state(current_index)
+
     try:
+        # Main publish loop: switches datasets automatically when one completes.
         while True:
             if current_index >= len(df):
-                if loop_forever:
+                if dataset_index + 1 < len(dataset_sequence):
+                    dataset_index += 1
                     current_index = 0
+                    resolved_dataset, df, mean_load = _load_dataset(dataset_index)
+                    logger.info(
+                        "producer-dataset-switch",
+                        extra={
+                            "dataset_index": dataset_index,
+                            "dataset_path": str(resolved_dataset),
+                            "rows": int(len(df)),
+                            "mean_load_mw": float(mean_load),
+                        },
+                    )
+                    _save_state(current_index)
+                    continue
+                if loop_forever:
+                    dataset_index = 0
+                    current_index = 0
+                    resolved_dataset, df, mean_load = _load_dataset(dataset_index)
+                    logger.info(
+                        "producer-dataset-switch",
+                        extra={
+                            "dataset_index": dataset_index,
+                            "dataset_path": str(resolved_dataset),
+                            "rows": int(len(df)),
+                            "mean_load_mw": float(mean_load),
+                            "reason": "loop-forever-restart",
+                        },
+                    )
+                    _save_state(current_index)
+                    continue
                 else:
                     logger.info("producer-complete", extra={"published_records": published_count})
                     break
@@ -274,15 +414,7 @@ def run_producer(
             published_count += 1
 
             if resume:
-                _save_resume_state(
-                    resolved_state_path,
-                    {
-                        "dataset_path": str(resolved_dataset),
-                        "rows": len(df),
-                        "next_index": current_index,
-                        "updated_at_utc": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
+                _save_state(current_index)
 
             logger.info(
                 "record-published",
@@ -296,10 +428,13 @@ def run_producer(
             )
             time.sleep(sleep_seconds)
     except KeyboardInterrupt:
+        _save_state(current_index)
         logger.info(
             "producer-stop",
             extra={
                 "published_records": published_count,
+                "dataset_index": dataset_index,
+                "dataset_path": str(resolved_dataset),
                 "next_index": current_index,
                 "reason": "keyboard-interrupt",
             },
@@ -317,7 +452,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dataset",
         dest="dataset_path",
         default=None,
-        help="Path to dataset (parquet or CSV). If CSV, must be zone-level data (auto-aggregates to PJM-wide).",
+        help=(
+            "Path to dataset (parquet or CSV). If path ends with a year (e.g., ...-2020.csv), "
+            "producer auto-advances across later yearly siblings (2021, 2022, ...)."
+        ),
     )
     parser.add_argument(
         "--sleep-seconds",
@@ -354,6 +492,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    # CLI entrypoint for replay producer.
     parser = _build_parser()
     args = parser.parse_args()
     configure_logging(level=args.log_level, json_logs=True)

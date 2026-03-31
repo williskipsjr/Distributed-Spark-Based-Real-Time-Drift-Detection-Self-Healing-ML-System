@@ -129,11 +129,18 @@ Important:
 - The `export PYSPARK_PYTHON` and `export PYSPARK_DRIVER_PYTHON` lines are required to force Spark driver/worker interpreter consistency.
 - Use `--run-seconds` instead of shell `timeout` for graceful shutdown.
 - Spark resumes from prior offsets/state by default using checkpoint path `checkpoints/spark_predictions/`.
+- Kafka source uses `failOnDataLoss=false` by default so aged-out offsets do not crash local resume runs.
 
 Start from scratch (fresh Spark state):
 
 ```bash
 python -m src.streaming.spark_job --no-debug-mode --run-seconds 120 --reset-checkpoint
+```
+
+Strict mode (fail immediately if any Kafka offsets are missing):
+
+```bash
+python -m src.streaming.spark_job --no-debug-mode --run-seconds 120 --fail-on-data-loss
 ```
 
 ### 5.3 Spark Job (Debug Mode)
@@ -181,7 +188,126 @@ python -m src.drift_detection.drift_detector
 cat artifacts/drift/drift_report.json
 ```
 
+Note: Drift detection now auto-removes zero-byte parquet shards in `data/metrics/hourly_metrics` before loading metrics.
+
+Run continuously every few minutes (recommended for live monitoring):
+
+```bash
+python -m src.drift_detection.drift_monitor --interval-seconds 300
+```
+
+Outputs:
+- Check history log: `artifacts/drift/drift_history.jsonl`
+- Monitor policy state: `artifacts/drift/drift_monitor_state.json`
+
+Retrain guardrails (prevents creating too many models):
+- Requires consecutive drift detections (default: 3)
+- Enforces cooldown between retrains (default: 180 minutes)
+- Default action is "retrain-suggested" only; automatic retrain requires explicit flags.
+
+Example with automatic retrain command:
+
+```bash
+python -m src.drift_detection.drift_monitor \
+	--interval-seconds 300 \
+	--required-consecutive-drifts 3 \
+	--cooldown-minutes 180 \
+	--trigger-retrain \
+	--retrain-command "python -m src.ml.train_baseline"
+```
+
 ## 9. Common Operations
+
+Self-healing trigger decision (dry-run by default):
+
+```bash
+python -m src.self_healing.trigger --dry-run
+```
+
+Decision output is one of:
+- `no_action`
+- `retrain_candidate`
+- `promote_candidate`
+
+Decision log file:
+- `artifacts/self_healing/trigger_decisions.jsonl`
+
+Example with policy knobs:
+
+```bash
+python -m src.self_healing.trigger \
+	--dry-run \
+	--required-consecutive-drifts 2 \
+	--min-relative-improvement 0.02
+```
+
+Retrain pipeline (build candidate model + comparison report):
+
+```bash
+python -m src.self_healing.retrain_pipeline \
+	--stream-csv-path data/stream_dataset/hrl_load_metered-2020.csv \
+	--recent-days 30 \
+	--min-relative-improvement 0.02
+```
+
+Outputs:
+- Candidate model artifact: `artifacts/models/candidates/model_candidate_*.joblib`
+- Candidate metrics: `artifacts/models/candidates/metrics_candidate_*.json`
+- Candidate comparison report: `artifacts/models/candidate_report.json`
+
+Trigger with command wiring (non-dry-run):
+
+```bash
+python -m src.self_healing.trigger \
+	--no-dry-run \
+	--required-consecutive-drifts 2 \
+	--retrain-command "python -m src.self_healing.retrain_pipeline --stream-csv-path data/stream_dataset/hrl_load_metered-2020.csv --recent-days 30"
+```
+
+Promotion and rollback policy:
+
+```bash
+# Gate evaluation only
+python -m src.self_healing.promotion promote --dry-run
+
+# Apply promotion when all gates pass
+python -m src.self_healing.promotion promote --no-dry-run --min-relative-improvement 0.02
+
+# Roll back to previous production model pointer
+python -m src.self_healing.promotion rollback --no-dry-run
+
+# Inspect active/previous pointer state
+python -m src.self_healing.promotion status
+```
+
+Promotion artifacts:
+- Active pointer: `artifacts/models/active_model.json`
+- Promotion/rollback audit log: `artifacts/models/promotion_log.jsonl`
+
+Important:
+- `src.ml.model_io.load_model()` now checks `artifacts/models/active_model.json` first.
+- `src.streaming.spark_job` uses this pointer by default unless `--model-path` is provided.
+- `src.self_healing.trigger --no-dry-run` auto-invokes promotion command for `promote_candidate` when no explicit `--promote-command` is supplied.
+
+Serving reload workflow after promotion:
+
+```bash
+# 1) Stop current Spark serving job gracefully (recommended with run window)
+# If running foreground without run window, stop with Ctrl+C.
+
+# 2) Promote candidate (or rollback if needed)
+python -m src.self_healing.promotion promote --no-dry-run --min-relative-improvement 0.02
+
+# 3) Start Spark serving again (it reads active pointer by default)
+python -m src.streaming.spark_job --no-debug-mode --run-seconds 120
+
+# 4) Verify active model version appears in metrics output
+python scripts/utilities/check_model_version_in_metrics.py --tail 20
+```
+
+Notes:
+- `active_model_version` is now written to hourly metrics parquet records.
+- Use `python -m src.self_healing.promotion status` to inspect current pointer before/after restart.
 
 Fresh replay reset (producer cursor + Spark checkpoint):
 
@@ -193,16 +319,8 @@ python -m src.streaming.spark_job --no-debug-mode --run-seconds 120 --reset-chec
 Remove zero-byte parquet files (if interrupted writes occurred):
 
 ```bash
-python - <<'PY'
-from pathlib import Path
-p = Path("data/metrics/hourly_metrics")
-removed = 0
-for f in p.glob("**/*.parquet"):
-	if f.stat().st_size == 0:
-		f.unlink()
-		removed += 1
-print("removed_zero_byte_files:", removed)
-PY
+python scripts/utilities/cleanup_zero_byte_metrics.py --dry-run
+python scripts/utilities/cleanup_zero_byte_metrics.py
 ```
 
 ## 10. Current Status

@@ -21,6 +21,7 @@ TARGET_COLUMN = "load_mw"
 
 @dataclass(frozen=True)
 class BaselineArtifacts:
+    # Artifact locations written by baseline training run.
     model_path: str
     metrics_path: str
     baseline_features_path: str
@@ -57,6 +58,7 @@ def _validate_columns(df: pd.DataFrame) -> None:
 
 
 def _chronological_split(df: pd.DataFrame, train_ratio: float = 0.8) -> tuple[pd.DataFrame, pd.DataFrame]:
+    # Time-ordered split to avoid future-data leakage.
     if not 0.0 < train_ratio < 1.0:
         raise ValueError("train_ratio must be between 0 and 1")
 
@@ -73,6 +75,10 @@ def train_baseline(
     metrics_path: str | None = None,
     baseline_features_path: str | None = None,
 ) -> dict[str, float | int | str]:
+    # ----------------------------------------------------
+    # ---------------- Train Baseline Model --------------
+    # Loads supervised data, trains XGBoost, and writes artifacts.
+    # ----------------------------------------------------
     logger = get_logger(__name__)
     dataset_path, resolved_model, resolved_metrics, resolved_feature_output = _resolve_paths(
         input_path=input_path,
@@ -201,6 +207,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    # CLI entrypoint for offline baseline model training.
     parser = _build_parser()
     args = parser.parse_args()
     configure_logging(level=args.log_level, json_logs=True)

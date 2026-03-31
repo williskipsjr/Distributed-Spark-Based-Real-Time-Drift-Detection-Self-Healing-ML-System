@@ -28,12 +28,55 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _delete_zero_byte_parquet_files(metrics_path: Path) -> int:
+    deleted = 0
+    for parquet_file in metrics_path.rglob("*.parquet"):
+        try:
+            if parquet_file.stat().st_size == 0:
+                parquet_file.unlink(missing_ok=True)
+                deleted += 1
+                logger.warning("deleted-empty-parquet", extra={"file": str(parquet_file)})
+        except Exception as exc:
+            logger.warning(
+                "failed-to-delete-empty-parquet",
+                extra={"file": str(parquet_file), "error": str(exc)},
+            )
+    return deleted
+
+
 def _load_hourly_metrics(metrics_path: Path) -> pd.DataFrame:
+    # ----------------------------------------------------
+    # ---------------- Metrics Load Block ----------------
+    # Loads all readable parquet shards and normalizes timestamps.
+    # ----------------------------------------------------
     parquet_files = sorted(metrics_path.rglob("*.parquet"))
     if not parquet_files:
         raise FileNotFoundError(f"No hourly metrics parquet files found in: {metrics_path}")
 
-    frames = [pd.read_parquet(f) for f in parquet_files]
+    frames: list[pd.DataFrame] = []
+    skipped_files = 0
+
+    for parquet_file in parquet_files:
+        try:
+            if parquet_file.stat().st_size == 0:
+                skipped_files += 1
+                logger.warning("skipping-empty-parquet", extra={"file": str(parquet_file)})
+                continue
+
+            frames.append(pd.read_parquet(parquet_file))
+        except Exception as exc:
+            skipped_files += 1
+            logger.warning(
+                "skipping-unreadable-parquet",
+                extra={"file": str(parquet_file), "error": str(exc)},
+            )
+
+    if not frames:
+        raise ValueError(
+            "No valid hourly metrics parquet files could be loaded "
+            f"from: {metrics_path} (skipped: {skipped_files})"
+        )
+
     df = pd.concat(frames, ignore_index=True)
     df["timestamp_hour"] = pd.to_datetime(df["timestamp_hour"], utc=True, errors="coerce")
     df = df.dropna(subset=["timestamp_hour"])
@@ -62,6 +105,7 @@ def _compute_drift_report(
     recent_df: pd.DataFrame,
     reference_time: datetime,
 ) -> dict[str, Any]:
+    # Computes baseline-vs-recent drift summary and decision flags.
     if baseline_df.empty:
         raise ValueError(
             "Baseline window (previous 7 days) contains no data — drift detection cannot run"
@@ -130,6 +174,7 @@ def run_drift_detection(
     metrics_path: str | None = None,
     report_path: str | None = None,
 ) -> dict[str, Any]:
+    # End-to-end drift detection execution used by monitor/orchestrator.
     root = _project_root()
     resolved_metrics = (
         Path(metrics_path) if metrics_path else root / "data" / "metrics" / "hourly_metrics"
@@ -143,6 +188,13 @@ def run_drift_detection(
         "drift-detection-started",
         extra={"metrics_path": str(resolved_metrics)},
     )
+
+    deleted_empty_files = _delete_zero_byte_parquet_files(resolved_metrics)
+    if deleted_empty_files:
+        logger.info(
+            "empty-parquet-cleanup-complete",
+            extra={"deleted_files": deleted_empty_files},
+        )
 
     metrics_df = _load_hourly_metrics(resolved_metrics)
 

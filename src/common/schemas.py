@@ -7,6 +7,7 @@ from typing import Any
 
 @dataclass(slots=True)
 class PJMLoadRecord:
+    # Canonical raw load record used at ingestion boundaries.
     datetime_beginning_utc: datetime
     datetime_beginning_ept: datetime
     nerc_region: str | None
@@ -35,6 +36,7 @@ class PJMLoadRecord:
 
 @dataclass(slots=True)
 class KafkaLoadMessage:
+    # Message envelope for Kafka transport.
     event_id: str
     event_time: datetime
     source: str
@@ -57,6 +59,7 @@ class KafkaLoadMessage:
 
 @dataclass(slots=True)
 class PredictionRecord:
+    # Record shape persisted by inference/monitoring stages.
     prediction_time: datetime
     event_time: datetime
     model_version: str
@@ -89,6 +92,7 @@ class PredictionRecord:
 
 @dataclass(slots=True)
 class DriftMetricRecord:
+    # Drift metric output emitted by detector/monitor pipeline.
     timestamp: datetime
     feature_name: str
     ks_stat: float
@@ -118,6 +122,10 @@ class DriftMetricRecord:
 
 
 def pjm_spark_schema():
+    # ----------------------------------------------------
+    # ---------------- Spark Schema Blocks ---------------
+    # Keep schema construction centralized for consistency.
+    # ----------------------------------------------------
     from pyspark.sql.types import BooleanType, DoubleType, StringType, StructField, StructType
 
     return StructType(
@@ -169,6 +177,7 @@ def drift_metric_spark_schema():
 
 
 def _as_datetime(value: Any) -> datetime:
+    # Coerces ISO strings and datetime objects into datetime.
     if isinstance(value, datetime):
         return value
     if value is None:
@@ -177,6 +186,7 @@ def _as_datetime(value: Any) -> datetime:
 
 
 def _as_optional_bool(value: Any) -> bool | None:
+    # Tolerant parser for bool-like values from CSV/JSON sources.
     if value is None:
         return None
     if isinstance(value, bool):

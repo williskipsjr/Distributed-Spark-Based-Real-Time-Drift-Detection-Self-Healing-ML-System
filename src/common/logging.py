@@ -8,6 +8,10 @@ from typing import Any
 
 
 class JsonFormatter(logging.Formatter):
+    # ----------------------------------------------------
+    # ---------------- JSON Log Formatter ----------------
+    # Serializes standard record metadata + extra fields.
+    # ----------------------------------------------------
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
             "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
@@ -37,6 +41,7 @@ class JsonFormatter(logging.Formatter):
 
 
 class TextFormatter(logging.Formatter):
+    # Human-readable formatter used during local development.
     def __init__(self) -> None:
         super().__init__(
             fmt="%(asctime)s | %(levelname)s | %(name)s | %(module)s | %(message)s",
@@ -45,6 +50,10 @@ class TextFormatter(logging.Formatter):
 
 
 def configure_logging(level: str = "INFO", json_logs: bool = True) -> None:
+    # ----------------------------------------------------
+    # ---------------- Logging Bootstrap -----------------
+    # Clears root handlers and installs one deterministic sink.
+    # ----------------------------------------------------
     numeric_level = getattr(logging, level.upper(), logging.INFO)
 
     handler = logging.StreamHandler(stream=sys.stdout)
@@ -58,4 +67,5 @@ def configure_logging(level: str = "INFO", json_logs: bool = True) -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
+    # Thin wrapper for consistent logger retrieval across modules.
     return logging.getLogger(name)

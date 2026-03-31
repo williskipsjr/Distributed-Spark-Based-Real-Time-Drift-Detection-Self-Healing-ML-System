@@ -30,6 +30,10 @@ def _load_base_config() -> Config:
 
 
 def _create_spark_session() -> SparkSession:
+    # ----------------------------------------------------
+    # ---------------- Spark Session Setup ---------------
+    # Locks interpreter and runtime settings for stable local runs.
+    # ----------------------------------------------------
     current_python = sys.executable
     return (
         SparkSession.builder.appName("pjm-load-streaming")
@@ -73,12 +77,21 @@ def _kafka_message_schema() -> StructType:
     )
 
 
-def _prepare_stream(spark: SparkSession, bootstrap_servers: str, topic: str) -> DataFrame:
+def _prepare_stream(
+    spark: SparkSession,
+    bootstrap_servers: str,
+    topic: str,
+    fail_on_data_loss: bool = False,
+) -> DataFrame:
+    # Reads Kafka payloads and converts them into typed stream columns.
     kafka_df = (
         spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", bootstrap_servers)
         .option("subscribe", topic)
         .option("startingOffsets", "latest")
+        # In local/dev setups Kafka logs can be reset/aged out between runs.
+        # With preserved Spark checkpoints this would otherwise crash with OffsetOutOfRange.
+        .option("failOnDataLoss", str(fail_on_data_loss).lower())
         .load()
     )
 
@@ -167,6 +180,7 @@ def _validate_feature_batch(batch_df: DataFrame, batch_id: int) -> None:
 
 
 def _build_prediction_udf(broadcast_model, debug_mode: bool = False):
+    # Creates row-level prediction UDF backed by broadcasted model bundle.
     def predict_load_row(features) -> float:
         bundle = broadcast_model.value
         model = bundle["model"]
@@ -228,6 +242,7 @@ def _build_hourly_metrics(scored_df: DataFrame) -> DataFrame:
         scored_df.withWatermark("timestamp", "1 hour")
         .groupBy(F.window(F.col("timestamp"), "1 hour"))
         .agg(
+            F.first(F.col("model_version"), ignorenulls=True).alias("active_model_version"),
             F.avg(F.col("predicted_load")).alias("mean_prediction"),
             F.max(F.col("predicted_load")).alias("max_prediction"),
             F.min(F.col("predicted_load")).alias("min_prediction"),
@@ -238,6 +253,7 @@ def _build_hourly_metrics(scored_df: DataFrame) -> DataFrame:
         )
         .select(
             F.col("window.start").alias("timestamp_hour"),
+            "active_model_version",
             "mean_prediction",
             "max_prediction",
             "min_prediction",
@@ -272,11 +288,17 @@ def _safe_batch_write(batch_df: DataFrame, batch_id: int, output_path: Path) -> 
 def run_streaming_job(
     output_path: str | None = None,
     checkpoint_path: str | None = None,
+    model_path: str | None = None,
     debug_mode: bool = DEBUG_MODE,
     run_seconds: int | None = None,
     reset_checkpoint: bool = False,
     clear_predictions: bool = False,
+    fail_on_data_loss: bool = False,
 ) -> None:
+    # ----------------------------------------------------
+    # ------------- Streaming Inference Runner -----------
+    # Builds stream -> scores -> writes debug console or metrics parquet.
+    # ----------------------------------------------------
     config = _load_base_config()
     bootstrap_servers = config.get("kafka.bootstrap_servers", "localhost:9092")
     topic = config.get("kafka.topics.raw_load", "pjm.load")
@@ -299,15 +321,29 @@ def run_streaming_job(
 
     spark = _create_spark_session()
 
-    model_path = root / "artifacts" / "models" / "model_v2.joblib"
-    bundle = load_model(model_path=str(model_path))
-    print("MODEL PATH:", str(model_path))
+    bundle = load_model(model_path=model_path)
+    resolved_model_path = getattr(bundle["model"], "model_path", "unknown")
+    print("MODEL PATH:", str(resolved_model_path))
     print("MODEL FEATURES:", bundle["features"])
 
     model_version = get_model_version(bundle)
     broadcast_model = spark.sparkContext.broadcast(bundle)
 
-    stream_df = _prepare_stream(spark=spark, bootstrap_servers=bootstrap_servers, topic=topic)
+    logger.info(
+        "kafka-source-options",
+        extra={
+            "topic": topic,
+            "starting_offsets": "latest",
+            "fail_on_data_loss": fail_on_data_loss,
+        },
+    )
+
+    stream_df = _prepare_stream(
+        spark=spark,
+        bootstrap_servers=bootstrap_servers,
+        topic=topic,
+        fail_on_data_loss=fail_on_data_loss,
+    )
     stream_df = _ensure_feature_columns(stream_df)
 
     debug_stream = None
@@ -379,6 +415,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Spark Structured Streaming inference job")
     parser.add_argument("--output-path", dest="output_path", default=None, help="Output parquet path")
     parser.add_argument("--checkpoint-path", dest="checkpoint_path", default=None, help="Checkpoint directory")
+    parser.add_argument("--model-path", dest="model_path", default=None, help="Optional explicit model path")
     parser.add_argument("--log-level", dest="log_level", default="INFO", help="Logging level")
     parser.add_argument(
         "--debug-mode",
@@ -403,19 +440,28 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Clear data/predictions directory before starting",
     )
+    parser.add_argument(
+        "--fail-on-data-loss",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Fail query when Kafka offsets are missing (strict mode). Default false for resilient local resume.",
+    )
     return parser
 
 
 def main() -> None:
+    # CLI entrypoint for Spark structured streaming inference.
     args = _build_parser().parse_args()
     configure_logging(level=args.log_level, json_logs=True)
     run_streaming_job(
         output_path=args.output_path,
         checkpoint_path=args.checkpoint_path,
+        model_path=args.model_path,
         debug_mode=args.debug_mode,
         run_seconds=args.run_seconds,
         reset_checkpoint=args.reset_checkpoint,
         clear_predictions=args.clear_predictions,
+        fail_on_data_loss=args.fail_on_data_loss,
     )
 
 

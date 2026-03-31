@@ -8,6 +8,8 @@ Operational helper scripts that are still useful for regular checks:
 
 - `check_producer_data.py`: Verify producer input scale and feature-ready output.
 - `validate_model_v2.py`: Offline sanity checks for deployed model behavior.
+- `cleanup_zero_byte_metrics.py`: Remove zero-byte parquet shards from `data/metrics/hourly_metrics`.
+- `check_model_version_in_metrics.py`: Verify active model version values written in hourly metrics parquet output.
 
 ## archive_debug/
 
