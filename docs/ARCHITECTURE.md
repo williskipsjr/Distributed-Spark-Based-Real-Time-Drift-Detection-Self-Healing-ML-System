@@ -2,6 +2,10 @@
 
 Last updated: 2026-03-25
 
+## Visual Overview
+
+![System Architecture](assets/architecture-diagram.png)
+
 ## 1) End-to-end system flow
 
 ```

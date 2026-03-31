@@ -2,6 +2,12 @@
 
 Central navigation for project documentation.
 
+## Architecture Diagram
+
+![System Architecture](assets/architecture-diagram.png)
+
+- [ARCHITECTURE.md](ARCHITECTURE.md): Detailed architecture narrative and component-level flow.
+
 ## Project State And Context
 
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md): Single-source project context, architecture summary, and command baselines.

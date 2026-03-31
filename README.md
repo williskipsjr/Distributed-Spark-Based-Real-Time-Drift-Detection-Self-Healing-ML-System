@@ -2,6 +2,12 @@
 
 End-to-end real-time ML pipeline for PJM electricity load forecasting.
 
+## Architecture Diagram
+
+![System Architecture](docs/assets/architecture-diagram.png)
+
+See a focused architecture write-up in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 The system uses:
 
 - Kafka for streaming events
