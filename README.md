@@ -10,6 +10,20 @@ The system uses:
 - Drift detection over hourly metrics
 - A production-oriented debugging workflow
 
+## Script Layout
+
+- Canonical maintenance scripts:
+	- `scripts/maintenance/reset_pipeline.py`
+- Canonical testing scripts:
+	- `scripts/testing/run_tests.py`
+	- `scripts/testing/run_tests.ps1`
+	- `scripts/testing/validate_test.py`
+- Backward-compatible root wrappers (still supported):
+	- `reset_pipeline.py`
+	- `run_tests.py`
+	- `run_tests.ps1`
+	- `validate_test.py`
+
 ## 1. What This Project Does
 
 1. Builds supervised time-series data with canonical lag and rolling features.
@@ -217,6 +231,16 @@ python -m src.drift_detection.drift_monitor \
 ```
 
 ## 9. Common Operations
+
+## 10. Documentation Layout
+
+- Main docs index: `docs/INDEX.md`
+- Testing/runbook docs: `docs/testing/`
+	- `docs/testing/TESTING.md`
+	- `docs/testing/END_TO_END_TEST.md`
+	- `docs/testing/QUICK_START.md`
+	- `docs/testing/COMPLETE_TESTING_GUIDE.md`
+	- `docs/testing/SETUP_TESTING_FRAMEWORK.md`
 
 Self-healing trigger decision (dry-run by default):
 
