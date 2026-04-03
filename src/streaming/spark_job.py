@@ -310,6 +310,7 @@ def run_streaming_job(
 
     resolved_output.mkdir(parents=True, exist_ok=True)
     resolved_checkpoint.mkdir(parents=True, exist_ok=True)
+    predictions_output.mkdir(parents=True, exist_ok=True)
 
     if reset_checkpoint:
         logger.info("resetting-checkpoint-directory", extra={"checkpoint_path": str(resolved_checkpoint)})
@@ -348,6 +349,7 @@ def run_streaming_job(
 
     debug_stream = None
     validation_stream = None
+    predictions_query = None
 
     if debug_mode:
         # Pre-UDF live feature debug stream
@@ -386,6 +388,16 @@ def run_streaming_job(
             .start()
         )
     else:
+        # Persist row-level scored events for downstream analysis/debugging.
+        predictions_query = (
+            scored_df.select("timestamp", "actual_load", "predicted_load", "error", "model_version")
+            .writeStream.format("parquet")
+            .outputMode("append")
+            .option("path", str(predictions_output))
+            .option("checkpointLocation", str(resolved_checkpoint / "predictions_ckpt"))
+            .start()
+        )
+
         metrics_df = _build_hourly_metrics(scored_df)
         main_query = (
             metrics_df.writeStream.format("parquet")
@@ -407,6 +419,8 @@ def run_streaming_job(
             debug_stream.stop()
         if validation_stream is not None and validation_stream.isActive:
             validation_stream.stop()
+        if predictions_query is not None and predictions_query.isActive:
+            predictions_query.stop()
         if main_query.isActive:
             main_query.stop()
 

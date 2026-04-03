@@ -29,6 +29,32 @@ from src.drift_detection.drift_detector import run_drift_detection
 logger = get_logger(__name__)
 
 
+def get_latest_metrics(metrics_path: str | None = None) -> dict[str, Any] | None:
+    # Legacy compatibility helper used by older tests and notebooks.
+    root = _project_root()
+    resolved_metrics = Path(metrics_path) if metrics_path else root / "data" / "metrics" / "hourly_metrics"
+
+    if not resolved_metrics.exists():
+        return None
+
+    parquet_files = sorted(resolved_metrics.rglob("*.parquet"))
+    for parquet_file in reversed(parquet_files):
+        try:
+            if parquet_file.stat().st_size == 0:
+                continue
+            import pandas as pd
+
+            frame = pd.read_parquet(parquet_file)
+            if frame.empty:
+                continue
+            latest_row = frame.tail(1).iloc[0].to_dict()
+            return latest_row
+        except Exception:
+            continue
+
+    return None
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 

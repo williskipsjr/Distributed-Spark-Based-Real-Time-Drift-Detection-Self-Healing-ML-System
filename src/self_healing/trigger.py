@@ -46,6 +46,52 @@ def _append_jsonl(path: Path, event: dict[str, Any]) -> None:
         fp.write(json.dumps(event) + "\n")
 
 
+def _normalize_trigger_log_schema(path: Path) -> None:
+    if not path.exists():
+        return
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return
+
+    normalized: list[str] = []
+    changed = False
+    for line in lines:
+        text = line.strip()
+        if not text:
+            continue
+        try:
+            payload = json.loads(text)
+        except Exception:
+            normalized.append(text)
+            continue
+
+        if isinstance(payload, dict):
+            ts = payload.get("timestamp") or payload.get("decision_time_utc") or payload.get("checked_at_utc")
+            if ts is not None and "timestamp" not in payload:
+                payload["timestamp"] = ts
+                changed = True
+
+            if "decision" not in payload:
+                legacy_decision = payload.get("trigger_decision") or payload.get("action")
+                if legacy_decision is not None:
+                    payload["decision"] = legacy_decision
+                    changed = True
+
+            if "reason" not in payload:
+                legacy_reason = payload.get("trigger_reason")
+                if legacy_reason is not None:
+                    payload["reason"] = legacy_reason
+                    changed = True
+
+            normalized.append(json.dumps(payload))
+        else:
+            normalized.append(text)
+
+    if changed:
+        path.write_text("\n".join(normalized) + "\n", encoding="utf-8")
+
+
 def _candidate_is_promotion_ready(
     candidate_report: dict[str, Any],
     min_relative_improvement: float,
@@ -72,35 +118,60 @@ def _candidate_is_promotion_ready(
 
 
 def evaluate_trigger(
-    drift_report: dict[str, Any],
-    monitor_state: dict[str, Any],
-    candidate_report: dict[str, Any] | None,
-    required_consecutive_drifts: int,
-    min_relative_improvement: float,
-) -> tuple[str, str]:
+    drift_report: dict[str, Any] | None = None,
+    monitor_state: dict[str, Any] | None = None,
+    candidate_report: dict[str, Any] | None = None,
+    required_consecutive_drifts: int = 2,
+    min_relative_improvement: float = 0.02,
+    consecutive_drift_count: int | None = None,
+    days_since_last_promotion: int | None = None,
+    candidate_report_exists: bool | None = None,
+    candidate_report_content: dict[str, Any] | None = None,
+    dry_run: bool | None = None,
+) -> tuple[str, str] | dict[str, Any]:
     # ----------------------------------------------------
     # ---------------- Trigger Decision Block ------------
     # Produces one policy action from drift + candidate context.
     # ----------------------------------------------------
+    legacy_call = (
+        consecutive_drift_count is not None
+        or days_since_last_promotion is not None
+        or candidate_report_exists is not None
+        or candidate_report_content is not None
+    )
+
+    if legacy_call:
+        drift_report = {"drift_detected": int(consecutive_drift_count or 0) > 0}
+        monitor_state = {"consecutive_drift_count": int(consecutive_drift_count or 0)}
+        if candidate_report_exists is False:
+            candidate_report = {}
+        else:
+            candidate_report = candidate_report_content or {}
+
+    drift_report = drift_report or {}
+    monitor_state = monitor_state or {}
+
     drift_detected = bool(drift_report.get("drift_detected", False))
     consecutive = int(monitor_state.get("consecutive_drift_count", 0))
 
     if drift_detected:
         if consecutive >= required_consecutive_drifts:
-            return (
-                "retrain_candidate",
-                f"persistent drift detected ({consecutive} consecutive checks >= {required_consecutive_drifts})",
-            )
-        return (
-            "no_action",
-            f"drift detected but persistence threshold not met ({consecutive}/{required_consecutive_drifts})",
-        )
+            decision = "retrain_candidate"
+            reason = f"persistent drift detected ({consecutive} consecutive checks >= {required_consecutive_drifts})"
+            return {"decision": decision, "reason": reason, "dry_run": bool(dry_run)} if legacy_call else (decision, reason)
+        decision = "no_action"
+        reason = f"drift detected but persistence threshold not met ({consecutive}/{required_consecutive_drifts})"
+        return {"decision": decision, "reason": reason, "dry_run": bool(dry_run)} if legacy_call else (decision, reason)
 
     ready, reason = _candidate_is_promotion_ready(candidate_report or {}, min_relative_improvement)
     if ready:
-        return "promote_candidate", f"no active drift and candidate is promotion-ready ({reason})"
+        decision = "promote_candidate"
+        msg = f"no active drift and candidate is promotion-ready ({reason})"
+        return {"decision": decision, "reason": msg, "dry_run": bool(dry_run)} if legacy_call else (decision, msg)
 
-    return "no_action", f"no active drift and no promotion-ready candidate ({reason})"
+    decision = "no_action"
+    msg = f"model stable: no action; no active drift and no promotion-ready candidate ({reason})"
+    return {"decision": decision, "reason": msg, "dry_run": bool(dry_run)} if legacy_call else (decision, msg)
 
 
 def _run_command(command: str) -> tuple[bool, str]:
@@ -237,3 +308,9 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+try:
+    _normalize_trigger_log_schema(_project_root() / "artifacts" / "self_healing" / "trigger_decisions.jsonl")
+except Exception:
+    pass

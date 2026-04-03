@@ -6,7 +6,8 @@ from pathlib import Path
 
 
 def _project_root() -> Path:
-    return Path(__file__).resolve().parent
+    # reset_pipeline.py lives in scripts/maintenance/, so repo root is two levels up.
+    return Path(__file__).resolve().parents[2]
 
 
 def _build_path(project_root: Path, *parts: str) -> Path:

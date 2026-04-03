@@ -172,6 +172,7 @@ python -m src.streaming.spark_job --debug-mode --run-seconds 120
 ## 6. Output Paths
 
 - Hourly metrics output: `data/metrics/hourly_metrics/`
+- Row-level prediction output: `data/predictions/`
 - Spark checkpoints: `checkpoints/spark_predictions/`
 - Drift report: `artifacts/drift/drift_report.json`
 
@@ -258,6 +259,38 @@ Decision output is one of:
 - `no_action`
 - `retrain_candidate`
 - `promote_candidate`
+
+## 11. Self-Healing Automation Workflow
+
+Run full orchestrator loop (drift detection -> trigger -> retrain/promotion):
+
+```bash
+python -m src.self_healing.orchestrator \
+	--interval-seconds 300 \
+	--required-consecutive-drifts 3 \
+	--cooldown-minutes 180 \
+	--stream-csv-path data/stream_dataset/hrl_load_metered-2021.csv \
+	--recent-days 30 \
+	--min-relative-improvement 0.02
+```
+
+Enable serving reload after successful promotion:
+
+```bash
+python -m src.self_healing.orchestrator \
+	--max-runs 1 \
+	--reload-serving-after-promotion \
+	--no-serving-reload-dry-run
+```
+
+Model lifecycle registry:
+
+- `artifacts/models/model_registry.jsonl` stores candidate-trained, promoted, rolled-back, and serving-reload events.
+
+Serving reload logs:
+
+- `artifacts/models/serving_reload_log.jsonl`
+- `artifacts/models/serving_reload_state.json`
 
 Decision log file:
 - `artifacts/self_healing/trigger_decisions.jsonl`

@@ -16,12 +16,17 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from src.common.logging import configure_logging, get_logger
+from src.data.feature_builder import FEATURE_COLUMNS
 
 
 logger = get_logger(__name__)
+
+KS_THRESHOLD = 0.2
+PSI_THRESHOLD = 0.2
 
 
 def _project_root() -> Path:
@@ -100,6 +105,88 @@ def _split_windows(
     return baseline_df, recent_df
 
 
+def _ks_statistic(baseline: pd.Series, recent: pd.Series) -> float:
+    base = pd.to_numeric(baseline, errors="coerce").dropna().to_numpy(dtype="float64")
+    rec = pd.to_numeric(recent, errors="coerce").dropna().to_numpy(dtype="float64")
+    if base.size == 0 or rec.size == 0:
+        return 0.0
+
+    values = np.sort(np.unique(np.concatenate([base, rec])))
+    base_cdf = np.searchsorted(np.sort(base), values, side="right") / float(base.size)
+    rec_cdf = np.searchsorted(np.sort(rec), values, side="right") / float(rec.size)
+    return float(np.max(np.abs(base_cdf - rec_cdf)))
+
+
+def _psi_score(baseline: pd.Series, recent: pd.Series, bins: int = 10) -> float:
+    base = pd.to_numeric(baseline, errors="coerce").dropna().to_numpy(dtype="float64")
+    rec = pd.to_numeric(recent, errors="coerce").dropna().to_numpy(dtype="float64")
+    if base.size == 0 or rec.size == 0:
+        return 0.0
+
+    quantiles = np.linspace(0, 1, bins + 1)
+    edges = np.quantile(base, quantiles)
+    edges = np.unique(edges)
+    if edges.size < 2:
+        return 0.0
+
+    if rec.min() < edges[0]:
+        edges[0] = rec.min()
+    if rec.max() > edges[-1]:
+        edges[-1] = rec.max()
+
+    base_hist, _ = np.histogram(base, bins=edges)
+    rec_hist, _ = np.histogram(rec, bins=edges)
+
+    base_pct = base_hist / max(base_hist.sum(), 1)
+    rec_pct = rec_hist / max(rec_hist.sum(), 1)
+
+    eps = 1e-6
+    base_pct = np.clip(base_pct, eps, None)
+    rec_pct = np.clip(rec_pct, eps, None)
+
+    psi = np.sum((rec_pct - base_pct) * np.log(rec_pct / base_pct))
+    return float(psi)
+
+
+def _compute_feature_drift(baseline_df: pd.DataFrame, recent_df: pd.DataFrame) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    feature_metrics: list[dict[str, Any]] = []
+
+    available = [col for col in FEATURE_COLUMNS if col in baseline_df.columns and col in recent_df.columns]
+    if not available:
+        return [], {
+            "computed": False,
+            "reason": "feature_columns_not_present_in_hourly_metrics",
+            "feature_count": 0,
+            "drifted_features": 0,
+            "ks_threshold": KS_THRESHOLD,
+            "psi_threshold": PSI_THRESHOLD,
+        }
+
+    for feature in available:
+        ks = _ks_statistic(baseline_df[feature], recent_df[feature])
+        psi = _psi_score(baseline_df[feature], recent_df[feature])
+        drifted = bool(ks >= KS_THRESHOLD or psi >= PSI_THRESHOLD)
+
+        feature_metrics.append(
+            {
+                "feature": feature,
+                "ks_score": ks,
+                "psi_score": psi,
+                "drifted": drifted,
+            }
+        )
+
+    drifted_count = sum(1 for row in feature_metrics if row["drifted"])
+    return feature_metrics, {
+        "computed": True,
+        "reason": None,
+        "feature_count": len(feature_metrics),
+        "drifted_features": drifted_count,
+        "ks_threshold": KS_THRESHOLD,
+        "psi_threshold": PSI_THRESHOLD,
+    }
+
+
 def _compute_drift_report(
     baseline_df: pd.DataFrame,
     recent_df: pd.DataFrame,
@@ -133,12 +220,17 @@ def _compute_drift_report(
         abs(recent_mean_prediction - baseline_mean_prediction) > baseline_std_prediction * 2
     )
 
-    drift_detected = performance_drift or prediction_drift
+    feature_drift_metrics, feature_drift_summary = _compute_feature_drift(baseline_df, recent_df)
+    feature_drift_detected = bool(feature_drift_summary.get("drifted_features", 0) > 0)
+
+    drift_detected = performance_drift or prediction_drift or feature_drift_detected
 
     if performance_drift:
         drift_type = "performance_drift"
     elif prediction_drift:
         drift_type = "prediction_drift"
+    elif feature_drift_detected:
+        drift_type = "feature_drift"
     else:
         drift_type = "none"
 
@@ -167,6 +259,8 @@ def _compute_drift_report(
         "baseline_mean_prediction": baseline_mean_prediction,
         "recent_mean_prediction": recent_mean_prediction,
         "baseline_std_prediction": baseline_std_prediction,
+        "feature_drift": feature_drift_metrics,
+        "feature_drift_summary": feature_drift_summary,
     }
 
 

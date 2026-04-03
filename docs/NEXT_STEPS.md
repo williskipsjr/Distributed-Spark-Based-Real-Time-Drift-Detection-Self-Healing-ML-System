@@ -1,19 +1,13 @@
 # NEXT STEPS
 
-Last updated: 2026-03-26
+Last updated: 2026-04-03
 
 ## Immediate (next session)
 
-1. Implement self-healing trigger script:
-   - read `artifacts/drift/drift_report.json`
-   - trigger retraining when `drift_detected=true`
-   - persist decision and action logs.
-2. Implement retraining runner (`src/ml/retrain.py`) with explicit input/output artifact paths.
-3. Add model promotion policy:
-   - compare new model against baseline thresholds
-   - promote only on acceptance criteria.
-4. Add serving reload workflow:
-   - restart or reload Spark job with promoted model.
+1. Run 24h soak test for orchestrator with decision log review.
+2. Add integration test for promotion -> serving reload chain (non-dry-run in controlled fixture).
+3. Add operational runbook for rollback + replay after failed reload.
+4. Add alert thresholds for repeated reload failures.
 
 ## Short-term
 
@@ -24,17 +18,17 @@ Last updated: 2026-03-26
 2. Add runbook scripts for:
    - cleanup of stale/zero-byte parquet
    - one-command producer+spark smoke execution.
-3. Track model version metadata in a registry JSON.
+3. Add periodic compaction/rotation for model lifecycle registry JSONL artifacts.
 
 ## Medium-term
 
-1. Implement feature-level drift (KS/PSI) in `src/drift_detection/drift_detector.py`.
-2. Add retraining provenance tracking (dataset, timestamp, metrics, model hash).
-3. Integrate monitoring dashboard for model and drift trends.
+1. Expand feature drift inputs from hourly aggregates to richer feature snapshots at scoring time.
+2. Integrate monitoring dashboard for model and drift trends.
+3. Add API layer for dashboard consumption.
 
 ## Project milestone status
 
 - Streaming inference stability: In progress.
 - Drift detection hardening: Completed.
-- Self-healing loop: In progress.
+- Self-healing loop: Completed (initial production-ready baseline).
 

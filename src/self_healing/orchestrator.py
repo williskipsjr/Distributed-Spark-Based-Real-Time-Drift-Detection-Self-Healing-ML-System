@@ -29,6 +29,7 @@ from src.drift_detection.drift_detector import run_drift_detection
 from src.self_healing.trigger import evaluate_trigger
 from src.self_healing.retrain_pipeline import run_retrain_pipeline
 from src.self_healing.promotion import promote_candidate
+from src.self_healing.serving_reload import reload_serving
 
 
 logger = get_logger(__name__)
@@ -52,6 +53,9 @@ def run_orchestrator(
     history_path: str | None = None,
     state_path: str | None = None,
     decision_log_path: str | None = None,
+    reload_serving_after_promotion: bool = False,
+    serving_reload_command: str | None = None,
+    serving_reload_dry_run: bool = True,
 ) -> None:
     """
     Run the full self-healing orchestration loop.
@@ -85,6 +89,7 @@ def run_orchestrator(
             "stream_csv_path": stream_csv_path,
             "recent_days": recent_days,
             "min_relative_improvement": min_relative_improvement,
+            "reload_serving_after_promotion": reload_serving_after_promotion,
         },
     )
 
@@ -182,6 +187,24 @@ def run_orchestrator(
                     action_executed = "promotion"
                     action_ok = promotion_result.get("decision") == "promote" if isinstance(promotion_result, dict) else False
                     action_output = promotion_result
+
+                    if (
+                        reload_serving_after_promotion
+                        and isinstance(promotion_result, dict)
+                        and promotion_result.get("decision") == "promote"
+                        and promotion_result.get("pointer_updated")
+                    ):
+                        reload_result = reload_serving(
+                            reload_command=serving_reload_command,
+                            dry_run=serving_reload_dry_run,
+                        )
+                        action_output = {
+                            "promotion": promotion_result,
+                            "serving_reload": reload_result,
+                        }
+                        action_executed = "promotion+serving_reload"
+                        action_ok = bool(reload_result.get("ok", False))
+
                     logger.info(
                         "orchestrator-promotion-complete",
                         extra={
@@ -293,6 +316,22 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--history-path", default=None, help="Optional drift history JSONL path")
     parser.add_argument("--state-path", default=None, help="Optional monitor state JSON path")
     parser.add_argument("--decision-log-path", default=None, help="Optional decision log JSONL path")
+    parser.add_argument(
+        "--reload-serving-after-promotion",
+        action="store_true",
+        help="Run serving reload workflow after successful promotion",
+    )
+    parser.add_argument(
+        "--serving-reload-command",
+        default=None,
+        help="Explicit command for serving reload workflow",
+    )
+    parser.add_argument(
+        "--serving-reload-dry-run",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Execute reload command in dry-run mode by default",
+    )
     parser.add_argument("--log-level", default="INFO", help="Logging level")
     return parser
 
@@ -316,6 +355,9 @@ def main() -> None:
         history_path=args.history_path,
         state_path=args.state_path,
         decision_log_path=args.decision_log_path,
+        reload_serving_after_promotion=args.reload_serving_after_promotion,
+        serving_reload_command=args.serving_reload_command,
+        serving_reload_dry_run=args.serving_reload_dry_run,
     )
 
 

@@ -1,6 +1,6 @@
 # PROGRESS
 
-Last updated: 2026-03-26
+Last updated: 2026-04-03
 
 ## Completed
 
@@ -18,17 +18,17 @@ Last updated: 2026-03-26
 - Replay-compatible drift detection window anchoring.
 - NaN-safe drift baseline std fallback.
 - Successful metrics summary run (`rows: 2786`) and successful drift report generation.
+- Feature-level drift metrics integrated into drift report (KS/PSI when feature columns are available).
+- Automated self-healing flow wired end-to-end (drift -> trigger -> retrain/promote).
+- Model lifecycle registry events for training, promotion, rollback, and serving reload.
+- Serving reload workflow with orchestrator integration after successful promotions.
 
 ## In progress
 
-- Self-healing automation: drift-triggered retraining + promotion.
 - Regression tests for streaming stability paths and drift thresholds.
 
 ## Pending
 
-- Feature-level drift metrics (KS-test, PSI).
-- Automated retraining + promotion gate.
-- Model lifecycle registry.
 - Monitoring dashboard / observability UI.
 
 ## Current confidence level
@@ -37,5 +37,5 @@ Last updated: 2026-03-26
 - Producer payload correctness: High.
 - Inference formatting correctness: High.
 - Metrics/drift pipeline correctness: High for replay runs.
-- End-to-end production confidence: Medium-high (self-healing phase pending).
+- End-to-end production confidence: High for replay/controlled runs; production ops confidence medium-high pending broader soak tests.
 

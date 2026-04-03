@@ -15,3 +15,7 @@ spark-3.5.1-bin-hadoop3/
 spark-3.5.1-bin-hadoop3.tgz
 *.log
 *.tmp
+
+# Local planning docs (do not publish)
+docs/FRONTEND_INTEGRATION_PLAN.md
+docs/FRONTEND_API_CONTRACT.md

@@ -22,6 +22,7 @@ from xgboost import XGBRegressor
 from src.common.logging import configure_logging, get_logger
 from src.data.feature_builder import FEATURE_COLUMNS, FeatureSpec, build_supervised_pandas
 from src.ml.model_io import load_model, predict
+from src.self_healing.model_registry import append_registry_event
 
 
 TARGET_COLUMN = "load_mw"
@@ -122,6 +123,8 @@ def run_retrain_pipeline(
     recent_days: int = 30,
     current_model_path: str | None = None,
     min_relative_improvement: float = 0.02,
+    dataset_csv: str | None = None,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     # ----------------------------------------------------
     # --------------- Candidate Retrain Flow -------------
@@ -129,6 +132,17 @@ def run_retrain_pipeline(
     # ----------------------------------------------------
     logger = get_logger(__name__)
     root = _project_root()
+
+    if stream_csv_path is None and dataset_csv is not None:
+        stream_csv_path = dataset_csv
+
+    if dry_run:
+        return {
+            "status": "dry_run",
+            "stream_csv_path": stream_csv_path,
+            "recent_days": int(recent_days),
+            "min_relative_improvement": float(min_relative_improvement),
+        }
 
     resolved_stream_csv = (
         Path(stream_csv_path)
@@ -258,6 +272,18 @@ def run_retrain_pipeline(
     }
 
     candidate_report_path.write_text(json.dumps(report_payload, indent=2), encoding="utf-8")
+
+    append_registry_event(
+        event_type="candidate_trained",
+        model_version=candidate_version,
+        model_path=str(candidate_model_path),
+        metadata={
+            "promotion_recommended": bool(promotion_recommended),
+            "relative_improvement_mae": float(relative_improvement_mae),
+            "recent_days": int(recent_days),
+            "rows": int(len(recent_supervised)),
+        },
+    )
 
     logger.info(
         "retrain-pipeline-complete",
