@@ -20,8 +20,8 @@ export default function SelfHealingPage() {
   const data = envelope?.data
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="space-y-6" suppressHydrationWarning>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between" suppressHydrationWarning>
         <div>
           <p className="telemetry-label">endpoint /api/v1/self-healing/status</p>
           <h1 className="text-3xl font-bold uppercase tracking-[0.08em] text-foreground md:text-4xl">Self-Healing Status</h1>
@@ -46,7 +46,7 @@ export default function SelfHealingPage() {
         />
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4" suppressHydrationWarning>
         {selfHealing.isLoading ? (
           <>
             <KPISkeleton />
@@ -82,7 +82,7 @@ export default function SelfHealingPage() {
       </div>
 
       <Panel title="Latest reason" subtitle="Current system rationale from latest decision fields">
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2" suppressHydrationWarning>
           <div className="border border-border bg-background/60 p-3">
             <p className="telemetry-label">latest_reason</p>
             <p className="mt-1 text-sm text-foreground/90">{data?.latest_reason ?? 'N/A'}</p>
@@ -95,10 +95,10 @@ export default function SelfHealingPage() {
       </Panel>
 
       <Panel title="Decision log" subtitle="Recent entries from /api/v1/self-healing/status:data.decisions">
-        <div className="space-y-2">
+        <div className="space-y-2" suppressHydrationWarning>
           {data?.decisions?.length ? (
             data.decisions.map((entry, index) => (
-              <div key={`${entry.timestamp ?? 'row'}-${index}`} className="border border-border p-3">
+              <div key={`${entry.timestamp ?? 'row'}-${index}`} className="border border-border p-3" suppressHydrationWarning>
                 <div className="flex flex-wrap items-center gap-2">
                   <StatusBadge status={entry.command_ok ? 'ok' : 'warning'} label={entry.command_ok ? 'command ok' : 'command fail'} />
                   <StatusBadge status={entry.dry_run ? 'healthy' : 'critical'} label={entry.dry_run ? 'dry run' : 'live'} />

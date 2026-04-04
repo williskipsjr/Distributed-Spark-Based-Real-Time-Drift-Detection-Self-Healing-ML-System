@@ -39,8 +39,8 @@ export default function HealthPage() {
   const freshnessStatus = healthEnvelope?.is_stale ? 'warning' : 'healthy'
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="space-y-6" suppressHydrationWarning>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between" suppressHydrationWarning>
         <div>
           <p className="telemetry-label">endpoint /api/v1/system/health</p>
           <h1 className="text-3xl font-bold uppercase tracking-[0.08em] text-foreground md:text-4xl">System Health</h1>
@@ -108,11 +108,12 @@ export default function HealthPage() {
             ))}
           </div>
         ) : componentEntries.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3" suppressHydrationWarning>
             {componentEntries.map(([name, component]) => (
               <div
                 key={name}
                 className="border border-border p-4"
+                suppressHydrationWarning
               >
                 <div className="flex items-start gap-3">
                   <div className="mt-1">

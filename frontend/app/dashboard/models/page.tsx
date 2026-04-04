@@ -1,6 +1,9 @@
 'use client'
 
 import { useGetModelsActive, useGetModelsVersions } from '@/lib/api/hooks'
+import { useRecordedModelsData } from '@/lib/hooks/useRecordedModelsData'
+import { DEMO_STATE_EVENT, getDemoState } from '@/lib/demo/state'
+import { useEffect, useState } from 'react'
 import { KPICard } from '@/components/dashboard/kpi-card'
 import { StatusBadge } from '@/components/dashboard/status-badge'
 import { EndpointMeta } from '@/components/dashboard/endpoint-meta'
@@ -10,22 +13,46 @@ import { ErrorState } from '@/components/dashboard/error-state'
 import { KPISkeleton } from '@/components/dashboard/skeleton'
 
 export default function ModelsPage() {
+  const [demoEnabled, setDemoEnabled] = useState(false)
+
+  useEffect(() => {
+    const sync = () => {
+      setDemoEnabled(getDemoState().enabled)
+    }
+
+    sync()
+    if (typeof window !== 'undefined') {
+      window.addEventListener(DEMO_STATE_EVENT, sync)
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener(DEMO_STATE_EVENT, sync)
+      }
+    }
+  }, [])
+
   const modelsActive = useGetModelsActive()
   const modelVersions = useGetModelsVersions(30)
+  const demoModels = useRecordedModelsData()
 
-  if (modelsActive.error || modelVersions.error) {
-    return <ErrorState onRetry={() => void Promise.all([modelsActive.refetch(), modelVersions.refetch()])} />
+  const useDemoMode = demoEnabled || Boolean(modelsActive.error || modelVersions.error)
+  const activeModels = useDemoMode ? demoModels.active : modelsActive
+  const versionModels = useDemoMode ? demoModels.versions : modelVersions
+
+  if (activeModels.error || versionModels.error) {
+    return <ErrorState onRetry={() => void Promise.all([activeModels.refetch(), versionModels.refetch()])} />
   }
 
-  const activeEnvelope = modelsActive.data
-  const versionsEnvelope = modelVersions.data
+  const activeEnvelope = activeModels.data
+  const versionsEnvelope = versionModels.data
 
   const active = activeEnvelope?.data
   const versions = versionsEnvelope?.data
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="space-y-6" suppressHydrationWarning>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between" suppressHydrationWarning>
         <div>
           <p className="telemetry-label">endpoint /api/v1/models/active + /api/v1/models/versions</p>
           <h1 className="text-3xl font-bold uppercase tracking-[0.08em] text-foreground md:text-4xl">Model Versions</h1>
@@ -58,8 +85,8 @@ export default function ModelsPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {modelsActive.isLoading || modelVersions.isLoading ? (
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4" suppressHydrationWarning>
+        {activeModels.isLoading || versionModels.isLoading ? (
           <>
             <KPISkeleton />
             <KPISkeleton />
@@ -77,7 +104,7 @@ export default function ModelsPage() {
       </div>
 
       <Panel title="Active pointer" subtitle="Current production pointer from /api/v1/models/active">
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2" suppressHydrationWarning>
           <div className="border border-border bg-background/60 p-3">
             <p className="telemetry-label">active_model_path</p>
             <p className="mt-1 break-all text-sm text-foreground/90">{active?.active_model_path ?? 'N/A'}</p>
@@ -90,11 +117,11 @@ export default function ModelsPage() {
       </Panel>
 
       <Panel title="Promotion history" subtitle="Recent event stream from /api/v1/models/versions:data.events">
-        <div className="space-y-2">
+        <div className="space-y-2" suppressHydrationWarning>
           {versions?.events?.length ? (
             versions.events.map((event, index) => (
-              <div key={`${event.timestamp ?? 'event'}-${index}`} className="border border-border p-3">
-                <div className="flex flex-wrap items-center gap-2">
+              <div key={`${event.timestamp ?? 'event'}-${index}`} className="border border-border p-3" suppressHydrationWarning>
+                <div className="flex flex-wrap items-center gap-2" suppressHydrationWarning>
                   <StatusBadge status={event.pointer_updated ? 'healthy' : 'warning'} label={event.pointer_updated ? 'pointer updated' : 'no pointer update'} />
                   <StatusBadge status={event.decision === 'promote' ? 'ok' : 'warning'} label={event.decision ?? 'no decision'} />
                 </div>

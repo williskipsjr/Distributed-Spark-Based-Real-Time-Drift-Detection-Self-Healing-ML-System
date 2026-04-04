@@ -60,7 +60,7 @@ export default function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-background" suppressHydrationWarning>
       {/* Sidebar */}
       <aside
         className={cn(
@@ -160,8 +160,8 @@ export default function DashboardLayout({
         </header>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-auto">
-          <div className="mx-auto max-w-[1400px] p-5 md:p-8">
+        <div className="flex-1 overflow-auto" suppressHydrationWarning>
+          <div className="mx-auto max-w-[1400px] p-5 md:p-8" suppressHydrationWarning>
             {children}
           </div>
         </div>

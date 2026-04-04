@@ -12,6 +12,9 @@ import {
   Bar,
 } from 'recharts'
 import { useGetDriftCurrent, useGetDriftHistory } from '@/lib/api/hooks'
+import { useRecordedDriftData } from '@/lib/hooks/useRecordedDriftData'
+import { DEMO_STATE_EVENT, getDemoState } from '@/lib/demo/state'
+import { useEffect, useState } from 'react'
 import { KPICard } from '@/components/dashboard/kpi-card'
 import { StatusBadge } from '@/components/dashboard/status-badge'
 import { Timestamp } from '@/components/dashboard/timestamp'
@@ -22,15 +25,39 @@ import { Panel } from '@/components/dashboard/panel'
 import { AlertTriangle, Activity } from 'lucide-react'
 
 export default function DriftPage() {
+  const [demoEnabled, setDemoEnabled] = useState(false)
+
+  useEffect(() => {
+    const sync = () => {
+      setDemoEnabled(getDemoState().enabled)
+    }
+
+    sync()
+    if (typeof window !== 'undefined') {
+      window.addEventListener(DEMO_STATE_EVENT, sync)
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener(DEMO_STATE_EVENT, sync)
+      }
+    }
+  }, [])
+
   const driftCurrent = useGetDriftCurrent()
   const driftHistory = useGetDriftHistory(20)
+  const demoDrift = useRecordedDriftData()
 
-  const isLoading = driftCurrent.isLoading || driftHistory.isLoading
-  const error = driftCurrent.error || driftHistory.error
+  const useDemoMode = demoEnabled || Boolean(driftCurrent.error || driftHistory.error)
+  const activeDriftCurrent = useDemoMode ? demoDrift.current : driftCurrent
+  const activeDriftHistory = useDemoMode ? demoDrift.history : driftHistory
 
-  const driftEnvelope = driftCurrent.data
+  const isLoading = activeDriftCurrent.isLoading || activeDriftHistory.isLoading
+  const error = activeDriftCurrent.error || activeDriftHistory.error
+
+  const driftEnvelope = activeDriftCurrent.data
   const driftData = driftEnvelope?.data
-  const historyEnvelope = driftHistory.data
+  const historyEnvelope = activeDriftHistory.data
   const historyDataSource = historyEnvelope?.data
 
   const historyData =
@@ -47,7 +74,7 @@ export default function DriftPage() {
     })) || []
 
   if (error) {
-    return <ErrorState onRetry={() => void Promise.all([driftCurrent.refetch(), driftHistory.refetch()])} />
+    return <ErrorState onRetry={() => void Promise.all([activeDriftCurrent.refetch(), activeDriftHistory.refetch()])} />
   }
 
   const freshnessStatus = driftEnvelope?.is_stale ? 'warning' : 'healthy'
@@ -60,8 +87,8 @@ export default function DriftPage() {
     : 'warning'
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="space-y-6" suppressHydrationWarning>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between" suppressHydrationWarning>
         <div>
           <p className="telemetry-label">endpoint /api/v1/drift/current + /api/v1/drift/history</p>
           <h1 className="text-3xl font-bold uppercase tracking-[0.08em] text-foreground md:text-4xl">Drift Analysis</h1>
@@ -138,7 +165,7 @@ export default function DriftPage() {
       )}
 
       {driftData && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3" suppressHydrationWarning>
           {isLoading ? (
             <>
               <KPISkeleton />
@@ -184,11 +211,12 @@ export default function DriftPage() {
         <Panel title="Feature drift" subtitle="Feature-level drift flags from /api/v1/drift/current">
           <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.12em] text-foreground">Feature Drift Analysis</h3>
 
-          <div className="space-y-2">
+          <div className="space-y-2" suppressHydrationWarning>
             {driftData.feature_drift.map((feature, idx) => (
               <div
                 key={idx}
                 className="border border-border p-3"
+                suppressHydrationWarning
               >
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex-1 min-w-0">

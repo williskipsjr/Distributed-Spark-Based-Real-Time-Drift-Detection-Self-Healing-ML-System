@@ -16,6 +16,7 @@ import {
   SelfHealingStatusEnvelopeSchema,
   SystemHealthEnvelopeSchema,
 } from './types'
+import { getMockApiResponse } from '@/lib/demo/mockApi'
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '')
 const CONTROL_API_KEY = process.env.NEXT_PUBLIC_CONTROL_API_KEY || ''
@@ -50,6 +51,16 @@ async function fetchApi<T>(
 
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   const url = `${API_BASE_URL}${API_PREFIX}${normalizedPath}`
+  const method = (fetchOptions.method || 'GET').toUpperCase() as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+
+  const mockResponse = getMockApiResponse({
+    path: normalizedPath,
+    method,
+  })
+
+  if (mockResponse != null) {
+    return schema.parse(mockResponse)
+  }
 
   const headers = new Headers(fetchOptions.headers)
 

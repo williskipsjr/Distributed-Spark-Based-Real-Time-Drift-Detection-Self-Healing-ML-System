@@ -147,8 +147,8 @@ export default function ControlPage() {
   const servicesList = services.data?.services || []
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="space-y-6" suppressHydrationWarning>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between" suppressHydrationWarning>
         <div>
           <p className="telemetry-label">endpoint /api/v1/control/services + control action endpoints</p>
           <h1 className="text-3xl font-bold uppercase tracking-[0.08em] text-foreground md:text-4xl">Pilot Control</h1>
@@ -162,7 +162,7 @@ export default function ControlPage() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2" suppressHydrationWarning>
         <div className="border border-border bg-card/70 p-3">
           <p className="telemetry-label">service state endpoint</p>
           <p className="mt-1 text-sm text-foreground/90">GET /api/v1/control/services</p>
