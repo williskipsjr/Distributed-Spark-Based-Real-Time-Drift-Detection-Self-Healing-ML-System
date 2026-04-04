@@ -8,6 +8,8 @@ import {
   Activity,
   AlertCircle,
   Zap,
+  Cpu,
+  ShieldCheck,
   Menu,
   X,
 } from 'lucide-react'
@@ -36,7 +38,16 @@ const navigationItems = [
     label: 'Control',
     href: '/dashboard/control',
     icon: Zap,
-    active: false,
+  },
+  {
+    label: 'Self-Healing',
+    href: '/dashboard/self-healing',
+    icon: ShieldCheck,
+  },
+  {
+    label: 'Model Registry',
+    href: '/dashboard/models',
+    icon: Cpu,
   },
 ]
 
@@ -53,26 +64,33 @@ export default function DashboardLayout({
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-64 bg-sidebar text-sidebar-foreground transition-transform duration-300 lg:relative lg:w-64 lg:translate-x-0 border-r border-sidebar-border flex flex-col',
+          'fixed inset-y-0 left-0 z-50 w-72 border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-300 lg:relative lg:w-72 lg:translate-x-0',
+          'flex flex-col',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-sidebar-border">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-sidebar-primary"></div>
-            <h1 className="text-lg font-bold tracking-tight">ML Monitor</h1>
+        <div className="border-b border-sidebar-border px-6 py-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="telemetry-label">telemetry hub</p>
+              <h1 className="mt-1 text-xl font-bold tracking-wide text-sidebar-foreground">RACE CONTROL</h1>
+            </div>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="text-sidebar-foreground/60 hover:text-sidebar-foreground lg:hidden"
+            >
+              <X size={20} />
+            </button>
           </div>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden text-sidebar-foreground/60 hover:text-sidebar-foreground"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 animate-pulse rounded-full bg-sidebar-primary"></div>
+            <p className="text-xs uppercase tracking-[0.12em] text-sidebar-foreground/70">Live systems linked</p>
+          </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-6">
           {navigationItems.map((item) => {
             const isActive = pathname.includes(item.href)
             const Icon = item.icon
@@ -81,10 +99,10 @@ export default function DashboardLayout({
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium',
+                  'flex items-center gap-3 border px-3 py-3 text-sm font-semibold uppercase tracking-[0.12em]',
                   isActive
-                    ? 'bg-sidebar-primary/20 text-sidebar-primary border border-sidebar-primary/30'
-                    : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
+                    ? 'border-sidebar-primary/40 bg-sidebar-primary/10 text-sidebar-primary'
+                    : 'border-transparent text-sidebar-foreground/70 hover:border-sidebar-border hover:bg-sidebar-accent/70 hover:text-sidebar-foreground'
                 )}
               >
                 <Icon size={18} />
@@ -95,11 +113,12 @@ export default function DashboardLayout({
         </nav>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-sidebar-border text-xs text-sidebar-foreground/60">
-          <p className="mb-1 uppercase tracking-wider text-sidebar-foreground/50">Status</p>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            <p>Connected</p>
+        <div className="border-t border-sidebar-border px-6 py-4 text-xs text-sidebar-foreground/70">
+          <p className="telemetry-label">operator role</p>
+          <p className="mt-1 text-sm font-semibold uppercase tracking-[0.11em] text-sidebar-foreground">ML Ops Engineer</p>
+          <div className="mt-3 flex items-center gap-2">
+            <div className="h-2 w-2 animate-pulse rounded-full bg-sidebar-primary"></div>
+            <p className="uppercase tracking-[0.1em]">Control authority active</p>
           </div>
         </div>
       </aside>
@@ -107,7 +126,7 @@ export default function DashboardLayout({
       {/* Overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-30 bg-black/60 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -115,7 +134,7 @@ export default function DashboardLayout({
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Top Bar */}
-        <header className="border-b border-border bg-card px-6 py-4 backdrop-blur-sm bg-card/95">
+        <header className="border-b border-border bg-card px-6 py-4">
           <div className="flex items-center justify-between">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -124,15 +143,25 @@ export default function DashboardLayout({
               <Menu size={20} />
             </button>
             <div>
-              <h2 className="text-xl font-semibold text-foreground tracking-tight">Dashboard</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Real-time ML monitoring & control</p>
+              <p className="telemetry-label">live telemetry control surface</p>
+              <h2 className="text-xl font-bold tracking-[0.08em] text-foreground">SYSTEM DASHBOARD</h2>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="hidden border border-border bg-background/70 px-3 py-2 sm:block">
+                <p className="telemetry-label">status</p>
+                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.1em] text-primary">streaming live</p>
+              </div>
+              <div className="border border-border bg-background/70 px-3 py-2">
+                <p className="telemetry-label">role</p>
+                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.1em] text-foreground">pilot</p>
+              </div>
             </div>
           </div>
         </header>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-auto bg-gradient-to-br from-background via-background to-background/95">
-          <div className="p-6 max-w-7xl mx-auto">
+        <div className="flex-1 overflow-auto">
+          <div className="mx-auto max-w-[1400px] p-5 md:p-8">
             {children}
           </div>
         </div>

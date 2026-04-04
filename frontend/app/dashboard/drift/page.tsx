@@ -17,6 +17,8 @@ import { StatusBadge } from '@/components/dashboard/status-badge'
 import { Timestamp } from '@/components/dashboard/timestamp'
 import { ErrorState } from '@/components/dashboard/error-state'
 import { KPISkeleton } from '@/components/dashboard/skeleton'
+import { EndpointMeta } from '@/components/dashboard/endpoint-meta'
+import { Panel } from '@/components/dashboard/panel'
 import { AlertTriangle, Activity } from 'lucide-react'
 
 export default function DriftPage() {
@@ -58,16 +60,17 @@ export default function DriftPage() {
     : 'warning'
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Drift Detection</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Track drift signals, feature shifts, and historical events.
+          <p className="telemetry-label">endpoint /api/v1/drift/current + /api/v1/drift/history</p>
+          <h1 className="text-3xl font-bold uppercase tracking-[0.08em] text-foreground md:text-4xl">Drift Analysis</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Drift truth panel prioritizing immediate anomaly state.
           </p>
         </div>
         {driftEnvelope && (
-          <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+          <div className="border border-border bg-card px-4 py-3">
             <div className="flex items-center gap-3">
               <StatusBadge status={currentStatus} label={driftData?.drift_detected ? 'Drift detected' : driftData?.drift_available ? 'Stable' : 'Unavailable'} />
               <StatusBadge status={freshnessStatus} label={driftEnvelope.is_stale ? 'Stale' : 'Fresh'} />
@@ -79,12 +82,50 @@ export default function DriftPage() {
         )}
       </div>
 
+      {driftEnvelope && driftData && (
+        <Panel title="Drift state" subtitle="Primary state from /api/v1/drift/current">
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
+              <div className={`border p-5 ${driftData.drift_detected ? 'border-red-500/50 bg-red-500/10' : 'border-primary/40 bg-primary/10'}`}>
+                <p className="telemetry-label">drift_detected</p>
+                <p className={`mt-2 text-4xl font-bold uppercase tracking-[0.08em] ${driftData.drift_detected ? 'text-red-400' : 'text-primary'}`}>
+                  {String(driftData.drift_detected)}
+                </p>
+                <p className="mt-3 text-sm text-foreground/90">
+                  {driftData.drift_detected ? 'Action recommended: inspect drift scores and trigger mitigation path.' : 'No active drift trigger in current snapshot.'}
+                </p>
+              </div>
+              <div className="space-y-3">
+                <div className="border border-border bg-background/60 p-3">
+                  <p className="telemetry-label">detected_at</p>
+                  <p className="mt-1 text-sm">
+                    {driftData.detected_at ? <Timestamp date={driftData.detected_at} format="full" /> : 'N/A'}
+                  </p>
+                </div>
+                <div className="border border-border bg-background/60 p-3">
+                  <p className="telemetry-label">drift_available</p>
+                  <div className="mt-1">
+                    <StatusBadge status={driftData.drift_available ? 'ok' : 'warning'} label={String(driftData.drift_available)} />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <EndpointMeta
+              endpoint="GET /api/v1/drift/current"
+              generatedAt={driftEnvelope.generated_at}
+              isStale={driftEnvelope.is_stale}
+              sourceOk={driftEnvelope.source_status.drift_report.ok}
+            />
+          </div>
+        </Panel>
+      )}
+
       {driftEnvelope && (
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="border border-border bg-card p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">Source status</p>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="telemetry-label">source status</p>
+              <p className="mt-1 text-sm text-muted-foreground">
                 {driftEnvelope.generated_at ? <Timestamp date={driftEnvelope.generated_at} format="relative" /> : 'Generated just now'}
               </p>
             </div>
@@ -97,7 +138,7 @@ export default function DriftPage() {
       )}
 
       {driftData && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {isLoading ? (
             <>
               <KPISkeleton />
@@ -140,14 +181,14 @@ export default function DriftPage() {
 
       {/* Features Table */}
       {driftData && driftData.feature_drift.length > 0 && (
-        <div className="p-6 rounded-xl border border-border bg-card">
-          <h3 className="font-semibold text-foreground mb-4">Feature Drift Analysis</h3>
+        <Panel title="Feature drift" subtitle="Feature-level drift flags from /api/v1/drift/current">
+          <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.12em] text-foreground">Feature Drift Analysis</h3>
 
           <div className="space-y-2">
             {driftData.feature_drift.map((feature, idx) => (
               <div
                 key={idx}
-                className="p-3 rounded-md border border-border hover:bg-muted/50 transition-colors"
+                className="border border-border p-3"
               >
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -180,20 +221,30 @@ export default function DriftPage() {
               </div>
             ))}
           </div>
-        </div>
+        </Panel>
       )}
 
       {/* Drift History Chart */}
-      <div className="p-6 rounded-xl border border-border bg-card">
+      <Panel title="Drift timeline" subtitle="Historical event scores from /api/v1/drift/history">
         <div className="mb-4">
           <h3 className="font-semibold text-foreground">Drift Score Timeline</h3>
-          <p className="text-sm text-muted-foreground mt-1">Historical drift detection scores</p>
+          <p className="mt-1 text-sm text-muted-foreground">Historical drift detection scores</p>
         </div>
+        {historyEnvelope && (
+          <div className="mb-4">
+            <EndpointMeta
+              endpoint="GET /api/v1/drift/history?limit=20"
+              generatedAt={historyEnvelope.generated_at}
+              isStale={historyEnvelope.is_stale}
+              sourceOk={historyEnvelope.source_status.drift_history.ok}
+            />
+          </div>
+        )}
 
         {isLoading ? (
-          <div className="h-64 bg-muted rounded animate-pulse" />
+          <div className="h-64 animate-pulse bg-muted" />
         ) : historyData.length === 0 ? (
-          <div className="h-64 flex items-center justify-center text-muted-foreground">
+          <div className="flex h-64 items-center justify-center text-muted-foreground">
             No drift history available
           </div>
         ) : (
@@ -201,29 +252,29 @@ export default function DriftPage() {
             <AreaChart data={historyData}>
               <defs>
                 <linearGradient id="colorDrift" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.8} />
-                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#00d5ff" stopOpacity={0.85} />
+                  <stop offset="95%" stopColor="#00d5ff" stopOpacity={0.04} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--color-border) / 0.5)" />
+              <CartesianGrid strokeDasharray="2 6" stroke="rgba(255,255,255,0.12)" />
               <XAxis
                 dataKey="timestamp"
-                stroke="rgb(var(--color-muted-foreground) / 0.6)"
-                style={{ fontSize: '12px' }}
+                stroke="rgba(255,255,255,0.55)"
+                style={{ fontSize: '11px', fontWeight: 600 }}
               />
-              <YAxis stroke="rgb(var(--color-muted-foreground) / 0.6)" style={{ fontSize: '12px' }} />
+              <YAxis stroke="rgba(255,255,255,0.55)" style={{ fontSize: '11px', fontWeight: 600 }} />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: 'rgb(var(--color-card))',
-                  border: '1px solid rgb(var(--color-border))',
-                  borderRadius: '8px',
+                  backgroundColor: '#0a0a0a',
+                  border: '1px solid #202328',
+                  borderRadius: '0px',
                 }}
-                labelStyle={{ color: 'rgb(var(--color-foreground))' }}
+                labelStyle={{ color: '#dfff00' }}
               />
               <Area
                 type="monotone"
                 dataKey="prediction_drift_score"
-                stroke="#f59e0b"
+                stroke="#00d5ff"
                 fillOpacity={1}
                 fill="url(#colorDrift)"
                 isAnimationActive={false}
@@ -231,38 +282,38 @@ export default function DriftPage() {
             </AreaChart>
           </ResponsiveContainer>
         )}
-      </div>
+      </Panel>
 
       {/* Drifted Features Count Chart */}
-      <div className="p-6 rounded-xl border border-border bg-card">
+      <Panel title="Drift event bars" subtitle="Binary drift flags from /api/v1/drift/history">
         <div className="mb-4">
           <h3 className="font-semibold text-foreground">Drift Event Timeline</h3>
-          <p className="text-sm text-muted-foreground mt-1">Number of drift events over time</p>
+          <p className="mt-1 text-sm text-muted-foreground">Number of drift events over time</p>
         </div>
 
         {isLoading ? (
-          <div className="h-64 bg-muted rounded animate-pulse" />
+          <div className="h-64 animate-pulse bg-muted" />
         ) : historyData.length === 0 ? (
-          <div className="h-64 flex items-center justify-center text-muted-foreground">
+          <div className="flex h-64 items-center justify-center text-muted-foreground">
             No drift history available
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={historyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--color-border) / 0.5)" />
+              <CartesianGrid strokeDasharray="2 6" stroke="rgba(255,255,255,0.12)" />
               <XAxis
                 dataKey="timestamp"
-                stroke="rgb(var(--color-muted-foreground) / 0.6)"
-                style={{ fontSize: '12px' }}
+                stroke="rgba(255,255,255,0.55)"
+                style={{ fontSize: '11px', fontWeight: 600 }}
               />
-              <YAxis stroke="rgb(var(--color-muted-foreground) / 0.6)" style={{ fontSize: '12px' }} />
+              <YAxis stroke="rgba(255,255,255,0.55)" style={{ fontSize: '11px', fontWeight: 600 }} />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: 'rgb(var(--color-card))',
-                  border: '1px solid rgb(var(--color-border))',
-                  borderRadius: '8px',
+                  backgroundColor: '#0a0a0a',
+                  border: '1px solid #202328',
+                  borderRadius: '0px',
                 }}
-                labelStyle={{ color: 'rgb(var(--color-foreground))' }}
+                labelStyle={{ color: '#dfff00' }}
               />
               <Bar
                 dataKey="drift_detected"
@@ -273,7 +324,7 @@ export default function DriftPage() {
             </BarChart>
           </ResponsiveContainer>
         )}
-      </div>
+      </Panel>
     </div>
   )
 }

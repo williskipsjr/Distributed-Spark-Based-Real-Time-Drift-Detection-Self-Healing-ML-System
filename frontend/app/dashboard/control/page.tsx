@@ -13,6 +13,8 @@ import {
 import { StatusBadge } from '@/components/dashboard/status-badge'
 import { Timestamp } from '@/components/dashboard/timestamp'
 import { ErrorState } from '@/components/dashboard/error-state'
+import { Panel } from '@/components/dashboard/panel'
+import { LogsPanel } from '@/components/dashboard/logs-panel'
 import { ListItemSkeleton } from '@/components/dashboard/skeleton'
 import {
   AlertDialog,
@@ -27,7 +29,6 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { toast } from 'sonner'
 import { Play, Square, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 interface ConfirmAction {
   type: 'start' | 'stop' | 'restart' | 'start-pipeline' | 'stop-pipeline'
@@ -149,10 +150,11 @@ export default function ControlPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Control</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage services and pipeline</p>
+          <p className="telemetry-label">endpoint /api/v1/control/services + control action endpoints</p>
+          <h1 className="text-3xl font-bold uppercase tracking-[0.08em] text-foreground md:text-4xl">Pilot Control</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Actions mapped directly to control endpoints.</p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+        <div className="border border-border bg-card px-4 py-3">
           <div className="flex items-center gap-3">
             <StatusBadge status={dryRun ? 'healthy' : 'warning'} label={dryRun ? 'Dry run' : 'Production'} />
             <StatusBadge status="ok" label={`${servicesList.length} services`} />
@@ -160,11 +162,23 @@ export default function ControlPage() {
         </div>
       </div>
 
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="border border-border bg-card/70 p-3">
+          <p className="telemetry-label">service state endpoint</p>
+          <p className="mt-1 text-sm text-foreground/90">GET /api/v1/control/services</p>
+        </div>
+        <div className="border border-border bg-card/70 p-3">
+          <p className="telemetry-label">actions endpoint pattern</p>
+          <p className="mt-1 text-sm text-foreground/90">POST /api/v1/control/services/:service/:action and /control/pipeline/:action</p>
+        </div>
+      </div>
+
       {/* Dry Run Toggle */}
-      <div className="p-4 rounded-lg border border-blue-500/20 bg-blue-500/5 flex items-center justify-between">
+      <div className="flex items-center justify-between border border-border bg-card p-4">
         <div>
-          <p className="font-medium text-slate-900 dark:text-slate-100">Dry Run Mode</p>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+          <p className="telemetry-label">execution mode</p>
+          <p className="mt-1 text-lg font-bold uppercase tracking-[0.1em] text-foreground">Dry Run</p>
+          <p className="mt-1 text-sm text-muted-foreground">
             {dryRun
               ? 'Simulating actions without making changes'
               : 'Actions will be executed in production'}
@@ -175,23 +189,20 @@ export default function ControlPage() {
 
       {/* Safety Warning */}
       {!dryRun && (
-        <div className="p-4 rounded-lg border border-red-500/20 bg-red-500/5">
-          <p className="text-sm font-medium text-red-700 dark:text-red-300">
+        <div className="border border-red-500/35 bg-red-500/10 p-4">
+          <p className="text-sm font-medium text-red-300">
             Production Mode Active - Actions will execute in production. Confirmation required.
           </p>
         </div>
       )}
 
       {/* Pipeline Controls */}
-      <div className="p-4 rounded-lg border border-border bg-card">
-        <h2 className="font-semibold text-foreground mb-4">
-          Pipeline Control
-        </h2>
+      <Panel title="Pipeline control" subtitle="POST /api/v1/control/pipeline/start and /stop">
         <div className="flex gap-2">
           <Button
             onClick={() => handleServiceAction('start-pipeline')}
             disabled={startPipelineMutation.isPending}
-            className="gap-2 bg-green-600 hover:bg-green-700"
+            className="gap-2 border border-primary/35 bg-primary/20 text-primary hover:bg-primary/30"
           >
             <Play className="w-4 h-4" />
             {startPipelineMutation.isPending ? 'Starting...' : 'Start Pipeline'}
@@ -200,17 +211,17 @@ export default function ControlPage() {
             onClick={() => handleServiceAction('stop-pipeline')}
             disabled={stopPipelineMutation.isPending}
             variant="destructive"
-            className="gap-2"
+            className="gap-2 border border-red-500/35 bg-red-500/20 text-red-200 hover:bg-red-500/30"
           >
             <Square className="w-4 h-4" />
             {stopPipelineMutation.isPending ? 'Stopping...' : 'Stop Pipeline'}
           </Button>
         </div>
-      </div>
+      </Panel>
 
       {/* Services List */}
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold text-foreground">
+        <h2 className="text-lg font-semibold uppercase tracking-[0.1em] text-foreground">
           Services ({servicesList.length})
         </h2>
 
@@ -240,8 +251,8 @@ export default function ControlPage() {
             ))}
           </div>
         ) : (
-          <div className="p-6 text-center rounded-lg border border-slate-200 dark:border-slate-800">
-            <p className="text-slate-500 dark:text-slate-400">No services available</p>
+          <div className="border border-border p-6 text-center">
+            <p className="text-muted-foreground">No services available</p>
           </div>
         )}
       </div>
@@ -293,14 +304,14 @@ function ServiceCard({
   const serviceLogs = useGetServiceLogs(service.service, isExpanded)
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden bg-card">
+    <div className="overflow-hidden border border-border bg-card">
       {/* Service Header */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1">
             <button
               onClick={onToggleExpand}
-              className="p-1 hover:bg-muted rounded transition-colors"
+              className="p-1 hover:bg-muted"
             >
               {isExpanded ? (
                 <ChevronUp className="w-4 h-4" />
@@ -309,7 +320,7 @@ function ServiceCard({
               )}
             </button>
             <div className="flex-1">
-              <p className="font-medium text-foreground">{service.service}</p>
+              <p className="font-medium uppercase tracking-[0.08em] text-foreground">{service.service}</p>
               {service.last_started_at || service.last_stopped_at ? (
                 <Timestamp
                   date={service.last_started_at || service.last_stopped_at || new Date().toISOString()}
@@ -329,13 +340,28 @@ function ServiceCard({
         )}
       </div>
 
+      <div className="grid gap-2 border-b border-border bg-background/60 p-3 md:grid-cols-3">
+        <div>
+          <p className="telemetry-label">status endpoint</p>
+          <p className="mt-1 text-xs text-foreground/90">GET /api/v1/control/services/{service.service}/status</p>
+        </div>
+        <div>
+          <p className="telemetry-label">logs endpoint</p>
+          <p className="mt-1 text-xs text-foreground/90">GET /api/v1/control/services/{service.service}/logs</p>
+        </div>
+        <div>
+          <p className="telemetry-label">actions endpoint</p>
+          <p className="mt-1 text-xs text-foreground/90">POST /api/v1/control/services/{service.service}/start|stop|restart</p>
+        </div>
+      </div>
+
       {/* Service Controls */}
       <div className="p-4 border-t border-border flex gap-2 flex-wrap">
         <Button
           size="sm"
           onClick={() => onAction('start', service.service)}
           disabled={isPending || service.status === 'running'}
-          className="gap-1 bg-green-600 hover:bg-green-700"
+          className="gap-1 border border-primary/35 bg-primary/20 text-primary hover:bg-primary/30"
         >
           <Play className="w-3 h-3" />
           Start
@@ -345,7 +371,7 @@ function ServiceCard({
           onClick={() => onAction('stop', service.service)}
           disabled={isPending || service.status === 'stopped'}
           variant="destructive"
-          className="gap-1"
+          className="gap-1 border border-red-500/35 bg-red-500/20 text-red-200 hover:bg-red-500/30"
         >
           <Square className="w-3 h-3" />
           Stop
@@ -355,7 +381,7 @@ function ServiceCard({
           onClick={() => onAction('restart', service.service)}
           disabled={isPending}
           variant="outline"
-          className="gap-1"
+          className="gap-1 border border-[color:var(--warning)]/35 bg-[color:var(--warning)]/12 text-[color:var(--warning)] hover:bg-[color:var(--warning)]/20"
         >
           <RotateCcw className="w-3 h-3" />
           Restart
@@ -368,27 +394,9 @@ function ServiceCard({
           {serviceLogs.isLoading ? (
             <div className="text-xs text-muted-foreground">Loading logs...</div>
           ) : serviceLogs.error ? (
-            <div className="text-xs text-red-600 dark:text-red-400">Failed to load logs</div>
+            <div className="text-xs text-red-400">Failed to load logs</div>
           ) : serviceLogs.data && serviceLogs.data.lines.length > 0 ? (
-            <div className="space-y-1 font-mono text-xs max-h-48 overflow-y-auto">
-              {serviceLogs.data.lines.map((log, idx) => (
-                <div
-                  key={idx}
-                  className={cn('p-1 rounded', {
-                    'bg-red-500/10 text-red-700 dark:text-red-400': log.level === 'error',
-                    'bg-amber-500/10 text-amber-700 dark:text-amber-400': log.level === 'warning',
-                    'text-slate-600 dark:text-slate-400': ['info', 'debug'].includes(
-                      log.level
-                    ),
-                  })}
-                >
-                  <span className="text-muted-foreground">
-                    {new Date(log.timestamp).toLocaleTimeString()}
-                  </span>{' '}
-                  [{log.level}] {log.message}
-                </div>
-              ))}
-            </div>
+            <LogsPanel title={`${service.service} logs`} lines={serviceLogs.data.lines} />
           ) : (
             <div className="text-xs text-muted-foreground">No logs available</div>
           )}
@@ -436,7 +444,7 @@ function ConfirmActionDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="space-y-2 my-4">
-          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+          <p className="text-sm font-medium text-foreground">
             This will execute immediately and may affect your running services.
           </p>
         </div>
@@ -447,7 +455,7 @@ function ConfirmActionDialog({
           <AlertDialogAction
             onClick={onConfirm}
             disabled={isLoading}
-            className="bg-red-600 hover:bg-red-700"
+            className="border border-red-500/35 bg-red-500/20 text-red-200 hover:bg-red-500/30"
           >
             {isLoading ? 'Executing...' : 'Execute'}
           </AlertDialogAction>

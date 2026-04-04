@@ -18,30 +18,30 @@ interface StatusBadgeProps {
 }
 
 const statusColorMap = {
-  healthy: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
-  warning: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
-  critical: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30',
-  error: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30',
-  running: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
-  stopped: 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30',
-  ok: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
-  degraded: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
-  starting: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
-  stopping: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
-  failed: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30',
+  healthy: 'bg-primary/10 text-primary border-primary/35',
+  warning: 'bg-[color:var(--warning)]/15 text-[color:var(--warning)] border-[color:var(--warning)]/35',
+  critical: 'bg-red-500/15 text-red-400 border-red-500/35',
+  error: 'bg-red-500/15 text-red-400 border-red-500/35',
+  running: 'bg-primary/10 text-primary border-primary/35',
+  stopped: 'bg-muted text-muted-foreground border-border',
+  ok: 'bg-primary/10 text-primary border-primary/35',
+  degraded: 'bg-[color:var(--warning)]/15 text-[color:var(--warning)] border-[color:var(--warning)]/35',
+  starting: 'bg-[color:var(--warning)]/15 text-[color:var(--warning)] border-[color:var(--warning)]/35',
+  stopping: 'bg-[color:var(--warning)]/15 text-[color:var(--warning)] border-[color:var(--warning)]/35',
+  failed: 'bg-red-500/15 text-red-400 border-red-500/35',
 }
 
 const statusDotMap = {
-  healthy: 'bg-emerald-500',
-  warning: 'bg-amber-500',
+  healthy: 'bg-primary',
+  warning: 'bg-[color:var(--warning)]',
   critical: 'bg-red-500',
   error: 'bg-red-500',
-  running: 'bg-emerald-500',
-  stopped: 'bg-slate-400',
-  ok: 'bg-emerald-500',
-  degraded: 'bg-amber-500',
-  starting: 'bg-amber-500',
-  stopping: 'bg-amber-500',
+  running: 'bg-primary',
+  stopped: 'bg-muted-foreground',
+  ok: 'bg-primary',
+  degraded: 'bg-[color:var(--warning)]',
+  starting: 'bg-[color:var(--warning)]',
+  stopping: 'bg-[color:var(--warning)]',
   failed: 'bg-red-500',
 }
 
@@ -51,7 +51,7 @@ export function StatusBadge({ status, label, className }: StatusBadgeProps) {
   return (
     <div
       className={cn(
-        'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all',
+        'inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.11em] border',
         statusColorMap[status],
         className
       )}

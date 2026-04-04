@@ -23,7 +23,7 @@ export function Timestamp({
 
   return (
     <span
-      className={cn('text-xs text-slate-500 dark:text-slate-400', className)}
+      className={cn('text-xs text-muted-foreground', className)}
       title={format(dateObj, 'PPpp')}
     >
       {showIcon && '🕐 '}

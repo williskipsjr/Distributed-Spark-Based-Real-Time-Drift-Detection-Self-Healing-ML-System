@@ -13,9 +13,9 @@ interface KPICardProps {
 }
 
 const trendColorMap = {
-  positive: 'text-green-600 dark:text-green-400',
-  negative: 'text-red-600 dark:text-red-400',
-  neutral: 'text-slate-600 dark:text-slate-400',
+  positive: 'text-primary',
+  negative: 'text-red-400',
+  neutral: 'text-muted-foreground',
 }
 
 export function KPICard({
@@ -34,39 +34,39 @@ export function KPICard({
   }
 
   const statusBgMap = {
-    healthy: 'bg-emerald-500/10 border-emerald-500/30',
-    warning: 'bg-amber-500/10 border-amber-500/30',
-    critical: 'bg-red-500/10 border-red-500/30',
+    healthy: 'border-primary/40',
+    warning: 'border-[color:var(--warning)]/50',
+    critical: 'border-red-500/50',
   }
 
   return (
     <div
       className={cn(
-        'p-6 rounded-xl border transition-all duration-300',
-        'bg-card border-border hover:border-primary/40 hover:shadow-lg',
+        'border bg-card p-5 md:p-6',
+        'border-border',
         status && statusBgMap[status],
         className
       )}
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
-          <p className="text-xs uppercase font-semibold text-muted-foreground/70 tracking-wider mb-2">{title}</p>
+          <p className="telemetry-label mb-2">{title}</p>
           <div className="flex items-baseline gap-2">
-            <p className="text-4xl font-bold text-foreground">{value}</p>
-            {unit && <p className="text-sm font-medium text-muted-foreground">{unit}</p>}
+            <p className="telemetry-kpi text-foreground">{value}</p>
+            {unit && <p className="telemetry-kpi-unit">{unit}</p>}
           </div>
         </div>
         {icon && (
-          <div className="p-3 rounded-lg bg-primary/10 text-primary ml-4 flex-shrink-0">
+          <div className="ml-4 flex-shrink-0 border border-border bg-background/70 p-3 text-secondary">
             {icon}
           </div>
         )}
       </div>
 
       {(trend !== undefined || description) && (
-        <div className="flex items-center justify-between pt-4 border-t border-border/50">
+        <div className="flex items-center justify-between border-t border-border pt-4">
           {trend !== undefined && (
-            <p className={cn('text-sm font-semibold', trendColorMap[getTrendColor()])}>
+            <p className={cn('text-xs font-semibold uppercase tracking-[0.1em]', trendColorMap[getTrendColor()])}>
               {trend > 0 ? '↑ +' : trend < 0 ? '↓ ' : '→ '}{Math.abs(trend).toFixed(1)}%
             </p>
           )}
