@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { buildRecordedModelsResponse } from '@/lib/demo/recorded-models'
+import { buildRecordedModelsResponse } from '@/lib/demo/streams/recorded-models'
 
 export const runtime = 'nodejs'
 

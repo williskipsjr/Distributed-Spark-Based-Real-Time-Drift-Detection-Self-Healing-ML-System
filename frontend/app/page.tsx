@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import HomeClient from './home-client'
+import HomeClient from './_components/home-client'
 
 export default function Home() {
   const [mounted, setMounted] = useState(false)

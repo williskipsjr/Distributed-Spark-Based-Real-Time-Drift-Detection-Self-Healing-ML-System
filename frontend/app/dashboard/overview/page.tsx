@@ -13,7 +13,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { useGetDashboardSummary, useGetPredictions } from '@/lib/api/hooks'
-import { useDemoData } from '@/lib/hooks/useDemoData'
+import { useDemoData } from '@/lib/hooks/demo/useDemoData'
 import { KPICard } from '@/components/dashboard/kpi-card'
 import { StatusBadge } from '@/components/dashboard/status-badge'
 import { Timestamp } from '@/components/dashboard/timestamp'

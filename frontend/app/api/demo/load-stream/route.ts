@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { buildRecordedStreamEnvelope } from '@/lib/demo/recorded-stream'
+import { buildRecordedStreamEnvelope } from '@/lib/demo/streams/recorded-stream'
 
 export const runtime = 'nodejs'
 

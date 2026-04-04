@@ -1,7 +1,7 @@
 'use client'
 
 import { useGetModelsActive, useGetModelsVersions } from '@/lib/api/hooks'
-import { useRecordedModelsData } from '@/lib/hooks/useRecordedModelsData'
+import { useRecordedModelsData } from '@/lib/hooks/demo/useRecordedModelsData'
 import { DEMO_STATE_EVENT, getDemoState } from '@/lib/demo/state'
 import { useEffect, useState } from 'react'
 import { KPICard } from '@/components/dashboard/kpi-card'

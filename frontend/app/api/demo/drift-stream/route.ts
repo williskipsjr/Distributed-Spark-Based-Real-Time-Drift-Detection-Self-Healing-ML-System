@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { buildRecordedDriftResponse } from '@/lib/demo/recorded-drift'
+import { buildRecordedDriftResponse } from '@/lib/demo/streams/recorded-drift'
 
 export const runtime = 'nodejs'
 

@@ -12,7 +12,7 @@ import {
   Bar,
 } from 'recharts'
 import { useGetDriftCurrent, useGetDriftHistory } from '@/lib/api/hooks'
-import { useRecordedDriftData } from '@/lib/hooks/useRecordedDriftData'
+import { useRecordedDriftData } from '@/lib/hooks/demo/useRecordedDriftData'
 import { DEMO_STATE_EVENT, getDemoState } from '@/lib/demo/state'
 import { useEffect, useState } from 'react'
 import { KPICard } from '@/components/dashboard/kpi-card'
