@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 import pandas as pd
 from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.schemas import ControlActionRequest
 from src.api.schemas import ControlPipelineResponse
@@ -424,6 +425,15 @@ def create_app(project_root: Path | None = None) -> FastAPI:
     trigger_decisions_path = root / "artifacts" / "self_healing" / "trigger_decisions.jsonl"
 
     app = FastAPI(title="Self-Healing ML API", version="1.0.0")
+
+    # Enable CORS for frontend communication
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     service_order = ["kafka_broker", "spark_job", "kafka_producer", "orchestrator"]
     managed_process = {
@@ -1226,3 +1236,14 @@ def create_app(project_root: Path | None = None) -> FastAPI:
 
 
 app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "src.api.app:app",
+        host="127.0.0.1",
+        port=8000,
+        reload=False,
+    )
